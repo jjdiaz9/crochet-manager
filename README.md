@@ -9,7 +9,7 @@ Everything runs in the browser — no accounts, no server, no tracking. Your dat
 - **Projects** — status (planning / in progress / hibernating / finished / frogged), linked pattern, hook, yarn used, notes, progress photos.
 - **Row counter** — big tap targets, optional second counter for pattern repeats or stitches (with a target that auto-advances the row), undo history, jump to any row, keyboard shortcuts (Space/→ +1, ← −1, Z undo). Keeps the screen awake while counting.
 - **Patterns** — import PDFs, photos, `.txt`/`.md` files, paste written instructions, or save a link (Ravelry, Etsy, blogs). Written instructions are parsed into rows (`Row 1:`, `Rnd 2:`, `Rows 3-6:` …) so the counter can show the current and next step.
-- **Yarn stash** — brand, line, colorway, weight, fiber, yardage, quantity, label photo. **Scan the UPC barcode** with the camera (Safari 17+ / Chrome); known yarns are matched from your own stash first, unknown codes are looked up on UPCitemdb's free tier and then remembered.
+- **Yarn stash** — brand, line, colorway, weight, fiber, yardage, quantity, label photo. **Scan the UPC barcode** with the camera (Safari 17+ / Chrome); known yarns are matched from your own stash first, then Open Products Facts / Open Food Facts (free, no key). For wider coverage, deploy the included Cloudflare Worker (`worker/upc-proxy.js`, free) to reach UPCitemdb's free tier, which blocks direct browser calls, and paste the worker URL under **Data → Lookup proxy URL**.
 - **Supplies** — hooks (one-click "add a hook set"), stitch markers, safety eyes, stuffing, and so on, with quantities.
 - **Backup** — export/import JSON, optionally including attached PDFs and photos.
 

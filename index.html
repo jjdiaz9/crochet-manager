@@ -688,26 +688,35 @@ function guessFromTitle(title, brand) {
 }
 async function lookupUPC(y, code, fill) {
   code = normUPC(code); if (!code) return toast("Enter or scan a barcode first");
-  const st = yarnDlg.status; if (st) st.textContent = "Looking up " + code + "…";
+  const st = yarnDlg.status; const say = m => { if (st) st.textContent = m; };
+  say("Looking up " + code + "…");
   const local = findYarnByUPC(code);
   if (local && local.id !== y.id) { const { id, qty, notes, added, image, ...rest } = local; fill(rest, "your stash (" + yarnTitle(local) + ")"); return; }
-  if (!navigator.onLine) { if (st) st.textContent = "Offline — fill in the details by hand and they'll be remembered for this UPC."; return; }
-  try {
-    const key = settings.upcApiKey;
-    const url = (key ? "https://api.upcitemdb.com/prod/v1/lookup?upc=" : "https://api.upcitemdb.com/prod/trial/lookup?upc=") + encodeURIComponent(code);
-    const headers = key ? { user_key: key, key_type: "3scale" } : {};
-    const res = await fetch(url, { headers });
-    if (res.status === 429) { if (st) st.textContent = "Free lookup limit reached for today — enter details by hand (or add an API key in Data → Settings)."; return; }
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const j = await res.json(); const it = j.items?.[0];
-    if (!it) { if (st) st.textContent = "No match for " + code + " — fill in the details and it'll be remembered."; return; }
-    const info = guessFromTitle(it.title, it.brand); if (it.description) info.notes = it.description.slice(0, 300);
-    fill(info, "UPCitemdb");
-    if (it.images?.[0] && !y.image) { try { const b = await (await fetch(it.images[0])).blob(); const rec = await storeFile(new File([b], "label.jpg", { type: b.type || "image/jpeg" })); y.image = rec.id; } catch {} }
-  } catch (e) {
-    console.warn(e); if (st) st.textContent = "Lookup unavailable (" + (e.message || "network") + ") — enter the details by hand; they'll be remembered for this UPC.";
+  if (!navigator.onLine) return say("Offline — fill in the details by hand and they'll be remembered for this UPC.");
+  const ean = code.length === 12 ? "0" + code : code;
+  // 1) Open Products Facts / Open Food Facts — free, no key, allows browser calls
+  for (const host of ["world.openproductsfacts.org", "world.openfoodfacts.org"]) {
+    try {
+      const r = await fetch(`https://${host}/api/v2/product/${ean}.json?fields=product_name,brands,generic_name,image_front_url`);
+      if (r.ok) { const j = await r.json(); const pr = j.product; if (j.status === 1 && pr && (pr.product_name || pr.brands)) {
+        const info = guessFromTitle([pr.brands, pr.product_name, pr.generic_name].filter(Boolean).join(" - "), (pr.brands || "").split(",")[0].trim());
+        fill(info, "Open Products Facts"); await grabImage(y, pr.image_front_url); return; } }
+    } catch (e) { console.warn(host, e); }
   }
+  // 2) UPCitemdb through your own lookup proxy (see Data → UPC lookup); the API blocks direct browser calls
+  const proxy = (settings.upcProxy || "").trim();
+  if (proxy) {
+    try {
+      const r = await fetch(proxy + (proxy.includes("?") ? "&" : "?") + "upc=" + encodeURIComponent(code));
+      if (r.status === 429) return say("Free lookup limit reached for today — enter details by hand.");
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const j = await r.json(); const it = j.items?.[0];
+      if (it) { const info = guessFromTitle(it.title, it.brand); if (it.description) info.notes = it.description.slice(0, 300); fill(info, "UPCitemdb"); await grabImage(y, it.images?.[0]); return; }
+    } catch (e) { console.warn(e); return say("Lookup proxy failed (" + (e.message || "network") + ") — enter the details by hand; they'll be remembered for this UPC."); }
+  }
+  say("No match for " + code + (proxy ? "" : " (set up a lookup proxy under Data to also search UPCitemdb)") + " — fill in the details and they'll be remembered.");
 }
+async function grabImage(y, url) { if (!url || y.image) return; try { const b = await (await fetch(url)).blob(); if (!b.type.startsWith("image/")) return; const rec = await storeFile(new File([b], "label.jpg", { type: b.type })); y.image = rec.id; markDirty(); } catch {} }
 
 /* ---- barcode scanner (BarcodeDetector where available, manual fallback) ---- */
 function scanDlg(onCode) {
@@ -784,9 +793,10 @@ VIEWS.data = main => {
     el("label", { class: "flex small", style: "margin:10px 0" }, withFiles, "Include PDFs and photos (bigger file)"),
     el("div", { class: "flex", style: "flex-wrap:wrap" }, el("button", { class: "btn primary", onclick: () => exportData(withFiles.checked) }, "⬇ Export backup"),
       el("button", { class: "btn", onclick: () => importFileIn.click() }, "⬆ Import backup"), importFileIn)));
-  const keyIn = el("input", { type: "password", value: settings.upcApiKey || "", placeholder: "Optional — paid UPCitemdb key", autocomplete: "off", onchange: e => { settings.upcApiKey = e.target.value.trim(); saveSettings(); toast("Saved"); } });
-  main.append(el("div", { class: "card", style: "margin-top:12px" }, el("h3", null, "UPC lookup"), el("p", { class: "small" }, "Scanned barcodes are checked against your own stash first. Unknown codes are looked up on UPCitemdb's free tier (about 100 lookups a day, no key needed). Every yarn you save is remembered by UPC, so repeat skeins never need a lookup. Product titles rarely include weight or yardage, so double-check what gets filled in."),
-    field("UPCitemdb API key", keyIn), el("p", { class: "muted small" }, "The key is stored only in this browser and is never included in backups.")));
+  const proxyIn = el("input", { type: "url", value: settings.upcProxy || "", placeholder: "https://your-worker.workers.dev/", autocomplete: "off", onchange: e => { settings.upcProxy = e.target.value.trim(); saveSettings(); toast("Saved"); } });
+  main.append(el("div", { class: "card", style: "margin-top:12px" }, el("h3", null, "UPC lookup"), el("p", { class: "small" }, "Scanned barcodes are checked against your own stash first, then Open Products Facts / Open Food Facts (free, no key). Every yarn you save is remembered by UPC, so repeat skeins never need a lookup."),
+    el("p", { class: "small" }, "For wider coverage, UPCitemdb has a free tier (~100 lookups/day) but blocks calls straight from a web page. The repo includes a tiny Cloudflare Worker (worker/upc-proxy.js) you can deploy for free; paste its URL here."),
+    field("Lookup proxy URL", proxyIn), el("p", { class: "muted small" }, "Stored only in this browser; never included in backups. Product titles rarely include weight or yardage, so double-check what gets filled in.")));
   main.append(el("div", { class: "card", style: "margin-top:12px" }, el("h3", null, "Tips"), el("ul", { class: "small", style: "margin:6px 0 0;padding-left:18px" },
     el("li", null, "On iPhone: open the site in Safari → Share → Add to Home Screen for a full-screen app with the counter."),
     el("li", null, "Pattern text is parsed into rows when lines start with “Row 1:”, “Rnd 2:”, “Round 3”, or “Rows 4–6:”. Edit the pattern text any time to fix the parse."),
