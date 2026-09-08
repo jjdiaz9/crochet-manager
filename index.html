@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#7a4b2a">
+<title>Crochet Manager</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%237a4b2a'/%3E%3Ccircle cx='32' cy='32' r='16' fill='none' stroke='%23f4e3c9' stroke-width='6'/%3E%3Cpath d='M32 8 L32 56' stroke='%23f4e3c9' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f7f1e8;--bg2:#fffaf3;--card:#ffffff;--ink:#2b2118;--muted:#7d6a5b;--line:#e6d9c8;
+  --accent:#7a4b2a;--accent-ink:#fff;--accent2:#c98a4b;--soft:#f1e4d2;--danger:#b23a3a;--ok:#3d7a4a;
+  --radius:12px;--shadow:0 1px 3px rgba(60,40,20,.08),0 4px 14px rgba(60,40,20,.06);
+  --safe-b:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#1c1713;--bg2:#241e19;--card:#2b241e;--ink:#f1e8dd;--muted:#a9998a;--line:#3d332b;
+  --accent:#d19a62;--accent-ink:#1c1713;--accent2:#e2b482;--soft:#372d25;--danger:#e07070;--ok:#7bc08a;
+  --shadow:0 1px 3px rgba(0,0,0,.4);
+}}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--accent)}
+h1,h2,h3{margin:0;font-weight:650;letter-spacing:-.01em}
+h2{font-size:1.25rem}h3{font-size:1.05rem}
+header.top{position:sticky;top:0;z-index:20;background:var(--bg2);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:10px 14px;padding-top:calc(10px + env(safe-area-inset-top,0px))}
+header.top .logo{width:28px;height:28px;border-radius:50%;background:var(--accent);display:grid;place-items:center;flex:none}
+header.top .logo i{width:14px;height:14px;border:3px solid var(--bg2);border-radius:50%}
+header.top h1{font-size:1.1rem;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+nav.tabs{display:flex;gap:2px;background:var(--soft);padding:3px;border-radius:999px}
+nav.tabs button{border:0;background:transparent;padding:6px 12px;border-radius:999px;color:var(--muted);cursor:pointer;white-space:nowrap}
+nav.tabs button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+main{max-width:980px;margin:0 auto;padding:16px 14px calc(90px + var(--safe-b))}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.toolbar h2{flex:1}
+.toolbar input[type=search]{flex:1;min-width:140px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)}
+.card.click{cursor:pointer;transition:transform .08s}
+.card.click:active{transform:scale(.99)}
+.card .title{font-weight:650;margin-bottom:2px;display:flex;justify-content:space-between;gap:8px;align-items:start}
+.card .sub{color:var(--muted);font-size:.9rem}
+.card .meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;background:var(--soft);font-size:.78rem;color:var(--muted);white-space:nowrap}
+.pill.active{background:#dfeee3;color:#2d6b3b}.pill.finished{background:#e2e8f5;color:#3a4f8a}.pill.planning{background:var(--soft)}.pill.frogged{background:#f5e0e0;color:#8a3a3a}.pill.hibernating{background:#eee6f7;color:#5d3f8a}
+@media (prefers-color-scheme:dark){.pill.active{background:#264a2e;color:#a6dfb2}.pill.finished{background:#2c3650;color:#b3c3f0}.pill.frogged{background:#4a2828;color:#f0b0b0}.pill.hibernating{background:#3a2c4c;color:#d3bcef}}
+button.btn{border:1px solid var(--line);background:var(--card);padding:8px 14px;border-radius:10px;cursor:pointer;box-shadow:var(--shadow);display:inline-flex;align-items:center;gap:6px}
+button.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.btn.danger{color:var(--danger)}
+button.btn.small{padding:5px 10px;font-size:.88rem}
+button.btn:disabled{opacity:.5;cursor:default}
+input,select,textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--bg2);outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--accent2);box-shadow:0 0 0 3px rgba(201,138,75,.2)}
+textarea{min-height:100px;resize:vertical}
+label.f{display:block;margin-bottom:10px}
+label.f span{display:block;font-size:.82rem;color:var(--muted);margin-bottom:4px}
+.row{display:flex;gap:10px}.row>*{flex:1;min-width:0}
+.empty{text-align:center;color:var(--muted);padding:40px 12px;border:1px dashed var(--line);border-radius:var(--radius)}
+.empty b{display:block;color:var(--ink);margin-bottom:4px}
+/* modal */
+.modal-bg{position:fixed;inset:0;background:rgba(20,12,6,.45);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+@media(min-width:640px){.modal-bg{align-items:center}}
+.modal{background:var(--card);width:100%;max-width:620px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:18px 16px calc(18px + var(--safe-b))}
+@media(min-width:640px){.modal{border-radius:18px}}
+.modal h2{margin-bottom:12px}
+.modal .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+.modal .actions .spacer{flex:1}
+/* detail */
+.detail-head{display:flex;gap:10px;align-items:center;margin-bottom:12px}
+.detail-head h2{flex:1}
+.section{margin-top:18px}
+.section h3{margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.section h3 .cnt{color:var(--muted);font-weight:400;font-size:.9rem}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:.93rem}
+.kv dt{color:var(--muted)}.kv dd{margin:0}
+/* counter */
+.counter{display:grid;grid-template-columns:1fr;gap:12px}
+@media(min-width:720px){.counter{grid-template-columns:1.2fr 1fr}}
+.count-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:var(--shadow);text-align:center}
+.count-card .lbl{color:var(--muted);font-size:.85rem;text-transform:uppercase;letter-spacing:.06em}
+.count-card .num{font-size:5rem;font-weight:700;line-height:1.05;font-variant-numeric:tabular-nums}
+.count-card .num small{font-size:1.4rem;color:var(--muted);font-weight:500}
+.count-card .of{color:var(--muted)}
+.count-card .bigbtns{display:flex;gap:10px;margin-top:10px}
+.count-card .bigbtns button{flex:1;font-size:2rem;padding:18px 0;border-radius:14px;border:1px solid var(--line);background:var(--bg2);cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.count-card .bigbtns button.plus{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);flex:2}
+.count-card .mini{display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:wrap}
+.count-card.secondary .num{font-size:3.2rem}
+.instr{background:var(--soft);border-radius:12px;padding:12px 14px;margin-top:10px;text-align:left;font-size:1.05rem}
+.instr .n{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.instr.next{opacity:.7;font-size:.95rem}
+.progress{height:8px;background:var(--soft);border-radius:99px;overflow:hidden;margin-top:8px}
+.progress i{display:block;height:100%;background:var(--accent2)}
+.rowlist{max-height:50vh;overflow:auto;position:relative;border:1px solid var(--line);border-radius:12px}
+.rowlist div{padding:8px 12px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;gap:10px}
+.rowlist div:last-child{border-bottom:0}
+.rowlist div.cur{background:var(--soft);font-weight:600}
+.rowlist div.done{color:var(--muted)}
+.rowlist b{flex:none;min-width:52px;font-variant-numeric:tabular-nums}
+/* attachments */
+.att{display:flex;flex-wrap:wrap;gap:8px}
+.att .a{width:110px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--bg2);position:relative;cursor:pointer}
+.att .a img{width:100%;height:80px;object-fit:cover;display:block}
+.att .a .ph{height:80px;display:grid;place-items:center;font-size:1.8rem}
+.att .a .nm{font-size:.72rem;padding:4px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.att .a .x{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.55);color:#fff;border:0;border-radius:50%;width:22px;height:22px;cursor:pointer;line-height:1}
+.viewer{position:fixed;inset:0;background:#111;z-index:60;display:flex;flex-direction:column}
+.viewer .vbar{display:flex;gap:8px;align-items:center;padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top,0px));color:#fff;background:#222}
+.viewer .vbar span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.viewer .vbody{flex:1;overflow:auto;display:grid;place-items:center}
+.viewer img{max-width:100%;max-height:100%}
+.viewer iframe,.viewer object{width:100%;height:100%;border:0;background:#fff}
+/* scanner */
+.scan video{width:100%;max-height:60vh;border-radius:12px;background:#000}
+.scan .hint{color:var(--muted);text-align:center;margin-top:8px}
+.toast{position:fixed;left:50%;bottom:calc(24px + var(--safe-b));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;z-index:100;box-shadow:var(--shadow);max-width:90vw;font-size:.92rem;opacity:0;transition:opacity .2s}
+.toast.show{opacity:1}
+.stat{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:14px}
+.stat .card{text-align:center}.stat .card b{font-size:1.6rem;display:block}
+.yarnswatch{width:34px;height:34px;border-radius:50%;flex:none;border:2px solid var(--line);background:var(--soft);display:grid;place-items:center;overflow:hidden}
+.yarnswatch img{width:100%;height:100%;object-fit:cover}
+.flex{display:flex;gap:10px;align-items:center}
+.muted{color:var(--muted)}.small{font-size:.86rem}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{background:var(--soft);border-radius:999px;padding:3px 10px;font-size:.85rem;display:inline-flex;gap:6px;align-items:center}
+.chip button{border:0;background:transparent;cursor:pointer;color:var(--muted);padding:0;line-height:1}
+.hr{border:0;border-top:1px solid var(--line);margin:14px 0}
+.notes{white-space:pre-wrap}
+@media(max-width:600px){
+  header.top nav.tabs{position:fixed;left:10px;right:10px;bottom:calc(10px + var(--safe-b));z-index:30;justify-content:space-around;background:var(--bg2);border:1px solid var(--line);box-shadow:0 4px 20px rgba(0,0,0,.15)}
+  header.top nav.tabs button{flex:1;padding:9px 4px;font-size:.85rem}
+  .count-card .num{font-size:4.2rem}
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="logo"><i></i></div>
+  <h1 id="title">Crochet Manager</h1>
+  <nav class="tabs" id="tabs"></nav>
+</header>
+<main id="main"></main>
+<div class="toast" id="toast"></div>
+<script>
+"use strict";
+/* ========== helpers ========== */
+const APP_ID = "crochet-manager";
+const DATA_KEY = "crochet-data-v1", SETTINGS_KEY = "crochet-settings-v1";
+const $ = (s, r = document) => r.querySelector(s);
+function el(tag, attrs, ...kids) {
+  const n = document.createElement(tag);
+  if (attrs) for (const k in attrs) {
+    const v = attrs[k];
+    if (v == null || v === false) continue;
+    if (k === "class") n.className = v;
+    else if (k === "style") n.style.cssText = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else if (k === "html") n.innerHTML = v;
+    else if (k in n && k !== "list" && typeof v !== "object") n[k] = v;
+    else n.setAttribute(k, v);
+  }
+  for (const k of kids.flat(Infinity)) if (k != null && k !== false) n.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return n;
+}
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const today = () => new Date().toISOString().slice(0, 10);
+const fmtDate = d => d ? new Date(d + (d.length === 10 ? "T12:00:00" : "")).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
+const esc = s => String(s ?? "");
+function toast(msg, ms = 2200) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), ms);
+}
+function deviceName() {
+  const ua = navigator.userAgent;
+  const plat = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Mac/.test(ua) ? "Mac" : /Android/.test(ua) ? "Android" : /Windows/.test(ua) ? "Windows" : "Device";
+  let s = settings.deviceId; if (!s) { s = Math.random().toString(36).slice(2, 5); settings.deviceId = s; saveSettings(); }
+  return plat + " · " + s;
+}
+
+/* ========== settings (never exported) ========== */
+let settings = {};
+try { settings = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}") || {}; } catch { settings = {}; }
+function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {} }
+
+/* ========== data ========== */
+function blankData() {
+  return { version: 1, app: APP_ID, sync: { rev: 0, modified: new Date().toISOString(), device: "" },
+    projects: [], patterns: [], yarns: [], supplies: [] };
+}
+let data = blankData();
+function loadData() {
+  try {
+    const raw = localStorage.getItem(DATA_KEY);
+    if (raw) { const d = JSON.parse(raw); if (d && d.app === APP_ID) data = Object.assign(blankData(), d); }
+  } catch (e) { console.warn("load failed", e); }
+  for (const k of ["projects", "patterns", "yarns", "supplies"]) if (!Array.isArray(data[k])) data[k] = [];
+  data.sync = Object.assign({ rev: 0, modified: "", device: "" }, data.sync || {});
+}
+let lastSerialized = null, saveTimer = null;
+function markDirty() { clearTimeout(saveTimer); saveTimer = setTimeout(flushSave, 300); }
+function flushSave() {
+  clearTimeout(saveTimer); saveTimer = null;
+  if (document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) document.activeElement.dispatchEvent(new Event("change", { bubbles: true }));
+  const probe = JSON.stringify({ ...data, sync: undefined });
+  if (probe === lastSerialized) return;
+  data.sync.rev = (data.sync.rev || 0) + 1; data.sync.modified = new Date().toISOString(); data.sync.device = deviceName();
+  try { localStorage.setItem(DATA_KEY, JSON.stringify(data)); lastSerialized = probe; }
+  catch (e) { toast("Could not save — storage may be full. Export your data!", 5000); console.error(e); }
+}
+window.addEventListener("beforeunload", flushSave);
+window.addEventListener("pagehide", flushSave);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushSave(); });
+const byId = (arr, id) => arr.find(x => x.id === id);
+function removeById(arr, id) { const i = arr.findIndex(x => x.id === id); if (i >= 0) arr.splice(i, 1); }
+
+/* ========== attachments in IndexedDB ========== */
+const idb = {
+  db: null,
+  open() {
+    if (this.db) return Promise.resolve(this.db);
+    return new Promise((res, rej) => {
+      if (!window.indexedDB) return rej(new Error("IndexedDB unavailable"));
+      const r = indexedDB.open("crochet-attachments", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("files", { keyPath: "id" });
+      r.onsuccess = () => { this.db = r.result; res(this.db); };
+      r.onerror = () => rej(r.error);
+    });
+  },
+  async put(rec) { const db = await this.open(); return new Promise((res, rej) => { const t = db.transaction("files", "readwrite"); t.objectStore("files").put(rec); t.oncomplete = () => res(rec.id); t.onerror = () => rej(t.error); }); },
+  async get(id) { const db = await this.open(); return new Promise((res, rej) => { const r = db.transaction("files").objectStore("files").get(id); r.onsuccess = () => res(r.result || null); r.onerror = () => rej(r.error); }); },
+  async del(id) { const db = await this.open(); return new Promise((res, rej) => { const t = db.transaction("files", "readwrite"); t.objectStore("files").delete(id); t.oncomplete = res; t.onerror = () => rej(t.error); }); },
+  async all() { const db = await this.open(); return new Promise((res, rej) => { const r = db.transaction("files").objectStore("files").getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => rej(r.error); }); },
+  async clear() { const db = await this.open(); return new Promise((res, rej) => { const t = db.transaction("files", "readwrite"); t.objectStore("files").clear(); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
+};
+const urlCache = new Map();
+async function attachmentURL(id) {
+  if (urlCache.has(id)) return urlCache.get(id);
+  const rec = await idb.get(id); if (!rec) return null;
+  const u = URL.createObjectURL(rec.blob); urlCache.set(id, u); return u;
+}
+async function storeFile(file) {
+  const id = uid();
+  await idb.put({ id, name: file.name, type: file.type || guessType(file.name), size: file.size, blob: file, added: new Date().toISOString() });
+  return { id, name: file.name, type: file.type || guessType(file.name), size: file.size };
+}
+function guessType(n) { n = n.toLowerCase(); return n.endsWith(".pdf") ? "application/pdf" : /\.(png|jpe?g|gif|webp|heic)$/.test(n) ? "image/" + n.split(".").pop() : "application/octet-stream"; }
+const blobToB64 = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(",")[1]); r.onerror = rej; r.readAsDataURL(b); });
+function b64ToBlob(b64, type) { const bin = atob(b64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Blob([u], { type }); }
+
+/* ========== modal ========== */
+function openModal(title, body, actions) {
+  const bg = el("div", { class: "modal-bg", onclick: e => { if (e.target === bg) close(); } });
+  const m = el("div", { class: "modal" }, title ? el("h2", null, title) : null, body);
+  const act = el("div", { class: "actions" });
+  const close = () => { flushSave(); bg.remove(); document.removeEventListener("keydown", esc); };
+  const esc = e => { if (e.key === "Escape") close(); };
+  for (const a of actions || []) {
+    if (a === "spacer") { act.append(el("div", { class: "spacer" })); continue; }
+    act.append(el("button", { class: "btn " + (a.cls || ""), onclick: async () => { const r = await a.run?.(close); if (r !== false && a.close !== false) close(); } }, a.label));
+  }
+  if (actions?.length) m.append(act);
+  bg.append(m); document.body.append(bg); document.addEventListener("keydown", esc);
+  setTimeout(() => m.querySelector("input,textarea,select")?.focus(), 50);
+  return { close, el: m };
+}
+function confirmDlg(msg, okLabel = "Delete") {
+  return new Promise(res => openModal(null, el("p", null, msg), [{ label: "Cancel", run: () => res(false) }, { label: okLabel, cls: "danger", run: () => res(true) }]));
+}
+function field(label, input) { return el("label", { class: "f" }, el("span", null, label), input); }
+function inp(obj, key, opts = {}) {
+  const i = el(opts.type === "textarea" ? "textarea" : "input", { type: opts.type === "textarea" ? null : (opts.type || "text"), placeholder: opts.placeholder || "", value: obj[key] ?? "", inputmode: opts.inputmode, list: opts.list });
+  i.addEventListener("change", () => { obj[key] = opts.type === "number" ? (i.value === "" ? "" : Number(i.value)) : i.value; opts.onchange?.(obj[key]); markDirty(); });
+  if (opts.type === "textarea") i.value = obj[key] ?? "";
+  return i;
+}
+function sel(obj, key, options, onchange) {
+  const s = el("select", null, options.map(o => el("option", { value: o[0] ?? o, selected: (obj[key] ?? "") === (o[0] ?? o) }, o[1] ?? o)));
+  s.addEventListener("change", () => { obj[key] = s.value; onchange?.(s.value); markDirty(); });
+  return s;
+}
+function datalist(id, values) { let d = document.getElementById(id); if (!d) { d = el("datalist", { id }); document.body.append(d); } d.replaceChildren(...[...new Set(values.filter(Boolean))].map(v => el("option", { value: v }))); return id; }
+const HOOK_SIZES = ["2.0 mm (B-1)", "2.25 mm (B-1)", "2.75 mm (C-2)", "3.25 mm (D-3)", "3.5 mm (E-4)", "3.75 mm (F-5)", "4.0 mm (G-6)", "4.5 mm (7)", "5.0 mm (H-8)", "5.5 mm (I-9)", "6.0 mm (J-10)", "6.5 mm (K-10½)", "8.0 mm (L-11)", "9.0 mm (M/N-13)", "10.0 mm (N/P-15)", "12.0 mm (P/Q)", "15.0 mm (P/Q)"];
+const YARN_WEIGHTS = ["0 – Lace", "1 – Super Fine (fingering/sock)", "2 – Fine (sport)", "3 – Light (DK)", "4 – Medium (worsted/aran)", "5 – Bulky (chunky)", "6 – Super Bulky", "7 – Jumbo"];
+const STATUSES = [["planning", "Planning"], ["active", "In progress"], ["hibernating", "Hibernating"], ["finished", "Finished"], ["frogged", "Frogged"]];
+const statusLabel = s => (STATUSES.find(x => x[0] === s) || [s, s])[1];
+
+const VIEWS = {};
+/* ========== router ========== */
+const TABS = [["projects", "Projects"], ["patterns", "Patterns"], ["yarns", "Yarn"], ["supplies", "Supplies"], ["data", "Data"]];
+let route = { tab: settings.lastTab || "projects", id: null, sub: null };
+function go(tab, id = null, sub = null) { route = { tab, id, sub }; settings.lastTab = tab; saveSettings(); try { history.replaceState(null, "", "#" + [tab, id, sub].filter(Boolean).join("/")); } catch {} render(); }
+function render() {
+  flushSave();
+  $("#tabs").replaceChildren(...TABS.map(([k, l]) => el("button", { class: route.tab === k ? "on" : "", onclick: () => go(k) }, l)));
+  const main = $("#main"); main.replaceChildren();
+  window.scrollTo(0, 0);
+  const v = VIEWS[route.tab] || VIEWS.projects;
+  v(main);
+}
+/* ========== pattern text parsing ========== */
+// Turns free text into an ordered list of rows/rounds. Lines starting with
+// "Row 3", "Rnd 3", "Round 3", "R3", "Rows 4-6", "Rounds 2–5" become rows;
+// a range expands into one entry per row with the same instruction.
+// Other lines are kept as notes attached to the following row (or as section headers).
+const ROW_RE = /^\s*(?:\*\*|__)?\s*(rows?|rnds?|rounds?|r)\s*\.?\s*(\d+)\s*(?:\s*(?:-|–|—|to|through|thru)\s*(\d+))?\s*[:.)\-–—]?\s*(?:\*\*|__)?\s*[:.)\-–—]?\s*(.*)$/i;
+function parsePatternRows(text) {
+  const rows = []; let pendingNote = [];
+  for (const raw of String(text || "").split(/\r?\n/)) {
+    const line = raw.trim(); if (!line) continue;
+    const m = line.match(ROW_RE);
+    if (m) {
+      const kind = /^rnd|^round/i.test(m[1]) ? "Rnd" : "Row";
+      const a = +m[2], b = m[3] ? +m[3] : a, text = m[4].trim();
+      if (b < a || b - a > 500) continue;
+      for (let n = a; n <= b; n++) {
+        rows.push({ n, kind, text: text || "(same as above)", note: pendingNote.length ? pendingNote.join(" ") : "", range: b > a ? `${a}–${b}` : "" });
+        pendingNote = [];
+      }
+    } else pendingNote.push(line);
+  }
+  return rows;
+}
+const rowLabel = r => r ? `${r.kind} ${r.n}` : "";
+
+/* ========== patterns view ========== */
+function patternSummary(p) {
+  const bits = [];
+  if (p.designer) bits.push(p.designer);
+  if (p.rows?.length) bits.push(p.rows.length + " rows");
+  if (p.attachments?.length) bits.push(p.attachments.length + " file" + (p.attachments.length > 1 ? "s" : ""));
+  if (p.url) bits.push("link");
+  return bits.join(" · ");
+}
+function newPattern() { return { id: uid(), name: "", designer: "", url: "", text: "", rows: [], attachments: [], hook: "", weight: "", tags: "", notes: "", created: today() }; }
+
+VIEWS.patterns = main => {
+  if (route.id) return patternDetail(main, byId(data.patterns, route.id));
+  const q = (settings.q_patterns || "").toLowerCase();
+  const list = data.patterns.filter(p => !q || [p.name, p.designer, p.tags, p.notes].join(" ").toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
+  main.append(el("div", { class: "toolbar" }, el("h2", null, "Patterns"),
+    el("input", { type: "search", placeholder: "Search patterns…", value: settings.q_patterns || "", oninput: e => { settings.q_patterns = e.target.value; saveSettings(); render(); } }),
+    el("button", { class: "btn primary", onclick: () => importPatternDlg() }, "+ Import / New")));
+  if (!data.patterns.length) main.append(el("div", { class: "empty" }, el("b", null, "No patterns yet"), "Import a PDF, paste written instructions, add photos, or save a link."));
+  else if (!list.length) main.append(el("div", { class: "empty" }, "Nothing matches your search."));
+  main.append(el("div", { class: "grid" }, list.map(p => el("div", { class: "card click", onclick: () => go("patterns", p.id) },
+    el("div", { class: "title" }, p.name || "Untitled", el("span", { class: "pill" }, patternKind(p))),
+    el("div", { class: "sub" }, patternSummary(p) || "—"),
+    p.tags ? el("div", { class: "meta" }, p.tags.split(",").map(t => t.trim()).filter(Boolean).map(t => el("span", { class: "pill" }, t))) : null))));
+};
+function patternKind(p) {
+  const hasPdf = p.attachments?.some(a => a.type === "application/pdf"), hasImg = p.attachments?.some(a => a.type.startsWith("image/"));
+  return hasPdf ? "PDF" : p.rows?.length ? "Text" : hasImg ? "Photos" : p.url ? "Link" : "Notes";
+}
+
+function importPatternDlg() {
+  const p = newPattern(); let files = [];
+  const status = el("div", { class: "muted small" });
+  const fileIn = el("input", { type: "file", multiple: true, accept: ".pdf,image/*,.txt,.md,text/plain,text/markdown", onchange: async e => {
+    for (const f of e.target.files) {
+      if (/^text\//.test(f.type) || /\.(txt|md)$/i.test(f.name)) { p.text = (p.text ? p.text + "\n\n" : "") + await f.text(); ta.value = p.text; if (!p.name) { p.name = f.name.replace(/\.[^.]+$/, ""); nameIn.value = p.name; } }
+      else { files.push(f); if (!p.name) { p.name = f.name.replace(/\.[^.]+$/, ""); nameIn.value = p.name; } }
+    }
+    status.textContent = files.length ? files.length + " file(s) ready to attach" : "";
+  } });
+  const nameIn = inp(p, "name", { placeholder: "e.g. Granny Square Blanket" });
+  const ta = inp(p, "text", { type: "textarea", placeholder: "Paste the written pattern here. Lines like \"Row 1: ch 20, sc in 2nd ch…\" or \"Rnd 3: …\" become steps for the row counter." });
+  ta.style.minHeight = "160px";
+  const body = el("div", null,
+    field("Pattern name", nameIn),
+    el("div", { class: "row" }, field("Designer", inp(p, "designer")), field("Tags (comma separated)", inp(p, "tags", { placeholder: "blanket, gift" }))),
+    field("Link (Ravelry, Etsy, blog…)", inp(p, "url", { type: "url", placeholder: "https://" })),
+    field("Files — PDF, photos, or .txt/.md", fileIn), status,
+    field("Written instructions", ta),
+    el("div", { class: "row" }, field("Hook", (() => { const i = inp(p, "hook", { list: datalist("dl-hooks", HOOK_SIZES) }); return i; })()), field("Yarn weight", sel(p, "weight", [["", "—"], ...YARN_WEIGHTS]))));
+  openModal("Import / new pattern", body, [{ label: "Cancel" }, "spacer", { label: "Save pattern", cls: "primary", run: async () => {
+    flushSave();
+    if (!p.name.trim() && !files.length && !p.text.trim() && !p.url.trim()) { toast("Add a name, a file, text, or a link first"); return false; }
+    if (!p.name.trim()) p.name = files[0]?.name.replace(/\.[^.]+$/, "") || "Untitled pattern";
+    p.rows = parsePatternRows(p.text);
+    for (const f of files) { try { p.attachments.push(await storeFile(f)); } catch (e) { toast("Could not store " + f.name); } }
+    data.patterns.push(p); markDirty(); flushSave();
+    toast(p.rows.length ? `Saved — ${p.rows.length} rows detected` : "Pattern saved");
+    go("patterns", p.id);
+  } }]);
+}
+
+function patternDetail(main, p) {
+  if (!p) { go("patterns"); return; }
+  main.append(el("div", { class: "detail-head" }, el("button", { class: "btn small", onclick: () => go("patterns") }, "‹ Patterns"), el("h2", null, p.name || "Untitled"),
+    el("button", { class: "btn small", onclick: () => editPatternDlg(p) }, "Edit"),
+    el("button", { class: "btn small danger", onclick: async () => { if (await confirmDlg(`Delete "${p.name}"? Projects using it keep their counters but lose the row text.`)) { for (const a of p.attachments || []) idb.del(a.id).catch(() => {}); removeById(data.patterns, p.id); for (const pr of data.projects) if (pr.patternId === p.id) pr.patternId = ""; markDirty(); go("patterns"); } } }, "Delete")));
+  const dl = el("dl", { class: "kv" });
+  const kv = (k, v) => { if (v) dl.append(el("dt", null, k), el("dd", null, v)); };
+  kv("Designer", p.designer); kv("Hook", p.hook); kv("Yarn weight", p.weight); kv("Tags", p.tags); kv("Added", fmtDate(p.created));
+  if (p.url) dl.append(el("dt", null, "Link"), el("dd", null, el("a", { href: p.url, target: "_blank", rel: "noopener" }, p.url.replace(/^https?:\/\//, "").slice(0, 60))));
+  main.append(el("div", { class: "card" }, dl, p.notes ? el("div", { class: "notes", style: "margin-top:10px" }, p.notes) : null));
+  const used = data.projects.filter(x => x.patternId === p.id);
+  main.append(el("div", { class: "section" }, el("div", { class: "flex" }, el("h3", { style: "flex:1" }, "Projects ", el("span", { class: "cnt" }, used.length)), el("button", { class: "btn small primary", onclick: () => newProjectDlg({ patternId: p.id, name: p.name }) }, "+ Start project")),
+    used.length ? el("div", { class: "grid", style: "margin-top:8px" }, used.map(projectCard)) : el("p", { class: "muted small" }, "No projects use this pattern yet.")));
+  main.append(attachmentsSection(p));
+  if (p.rows?.length || p.text) {
+    const sec = el("div", { class: "section" }, el("h3", null, "Rows ", el("span", { class: "cnt" }, p.rows.length)));
+    if (p.rows.length) sec.append(el("div", { class: "rowlist" }, p.rows.map(r => el("div", null, el("b", null, rowLabel(r)), el("span", null, r.note ? el("span", { class: "muted small" }, r.note + " — ") : null, r.text)))));
+    else sec.append(el("p", { class: "muted small" }, "No rows detected. Rows are recognized when lines start with “Row 1:”, “Rnd 2:”, “Round 3”, or “Rows 4-6:”."));
+    sec.append(el("details", { style: "margin-top:10px" }, el("summary", { class: "muted small" }, "Full text"), el("div", { class: "notes small", style: "margin-top:6px" }, p.text)));
+    main.append(sec);
+  }
+}
+function editPatternDlg(p) {
+  const ta = inp(p, "text", { type: "textarea" }); ta.style.minHeight = "200px";
+  const body = el("div", null, field("Name", inp(p, "name")),
+    el("div", { class: "row" }, field("Designer", inp(p, "designer")), field("Tags", inp(p, "tags"))),
+    field("Link", inp(p, "url", { type: "url" })),
+    el("div", { class: "row" }, field("Hook", inp(p, "hook", { list: datalist("dl-hooks", HOOK_SIZES) })), field("Yarn weight", sel(p, "weight", [["", "—"], ...YARN_WEIGHTS]))),
+    field("Notes", inp(p, "notes", { type: "textarea" })),
+    field("Written instructions (re-parsed on save)", ta));
+  openModal("Edit pattern", body, [{ label: "Cancel" }, "spacer", { label: "Save", cls: "primary", run: () => { flushSave(); p.rows = parsePatternRows(p.text); markDirty(); render(); } }]);
+}
+
+/* ========== attachments UI (shared by patterns & projects) ========== */
+function attachmentsSection(owner, opts = {}) {
+  owner.attachments ||= [];
+  const wrap = el("div", { class: "att" });
+  const fileIn = el("input", { type: "file", multiple: true, accept: opts.accept || ".pdf,image/*", style: "display:none", onchange: async e => {
+    for (const f of e.target.files) { try { owner.attachments.push(await storeFile(f)); } catch { toast("Could not store " + f.name); } }
+    markDirty(); render();
+  } });
+  const camIn = el("input", { type: "file", accept: "image/*", capture: "environment", style: "display:none", onchange: fileIn.onchange });
+  const sec = el("div", { class: "section" }, el("div", { class: "flex" }, el("h3", { style: "flex:1" }, opts.title || "Files & photos ", el("span", { class: "cnt" }, owner.attachments.length)),
+    el("button", { class: "btn small", onclick: () => camIn.click() }, "📷 Photo"), el("button", { class: "btn small", onclick: () => fileIn.click() }, "+ Add file")), fileIn, camIn, wrap);
+  if (!owner.attachments.length) wrap.append(el("span", { class: "muted small" }, opts.empty || "Attach PDFs or photos."));
+  for (const a of owner.attachments) {
+    const card = el("div", { class: "a", onclick: () => viewAttachment(a) });
+    if (a.type.startsWith("image/")) { const img = el("img", { alt: a.name }); attachmentURL(a.id).then(u => { if (u) img.src = u; else card.replaceChildren(el("div", { class: "ph" }, "⚠️")); }); card.append(img); }
+    else card.append(el("div", { class: "ph" }, a.type === "application/pdf" ? "📄" : "📎"));
+    card.append(el("div", { class: "nm", title: a.name }, a.name), el("button", { class: "x", onclick: async e => { e.stopPropagation(); if (await confirmDlg(`Remove ${a.name}?`, "Remove")) { removeById(owner.attachments, a.id); idb.del(a.id).catch(() => {}); markDirty(); render(); } } }, "×"));
+    wrap.append(card);
+  }
+  return sec;
+}
+async function viewAttachment(a) {
+  const u = await attachmentURL(a.id); if (!u) return toast("File not found in this browser's storage");
+  const v = el("div", { class: "viewer" });
+  const close = () => v.remove();
+  const bar = el("div", { class: "vbar" }, el("button", { class: "btn small", onclick: close }, "‹ Back"), el("span", null, a.name),
+    el("a", { class: "btn small", href: u, download: a.name }, "Download"), el("a", { class: "btn small", href: u, target: "_blank", rel: "noopener" }, "Open"));
+  const body = el("div", { class: "vbody" });
+  if (a.type.startsWith("image/")) body.append(el("img", { src: u, alt: a.name }));
+  else if (a.type === "application/pdf") body.append(el("iframe", { src: u, title: a.name }));
+  else body.append(el("p", { style: "color:#fff" }, "Preview not available — use Download."));
+  v.append(bar, body); document.body.append(v);
+}
+/* ========== projects ========== */
+function newProject(init = {}) {
+  return Object.assign({ id: uid(), name: "", status: "active", patternId: "", yarnIds: [], hook: "", started: today(), finished: "", notes: "", attachments: [],
+    counter: { row: 0, rowTarget: 0, rep: 0, repTarget: 0, repEnabled: false, history: [] }, updated: new Date().toISOString() }, init);
+}
+function projectCard(pr) {
+  const pat = byId(data.patterns, pr.patternId);
+  const c = pr.counter || {};
+  const total = c.rowTarget || pat?.rows?.length || 0;
+  return el("div", { class: "card click", onclick: () => go("projects", pr.id) },
+    el("div", { class: "title" }, pr.name || "Untitled", el("span", { class: "pill " + pr.status }, statusLabel(pr.status))),
+    el("div", { class: "sub" }, pat ? pat.name : "No pattern linked"),
+    el("div", { class: "meta" }, el("span", { class: "pill" }, "Row " + (c.row || 0) + (total ? " / " + total : "")), pr.hook ? el("span", { class: "pill" }, pr.hook) : null,
+      pr.yarnIds?.length ? el("span", { class: "pill" }, pr.yarnIds.length + " yarn" + (pr.yarnIds.length > 1 ? "s" : "")) : null),
+    total ? el("div", { class: "progress" }, el("i", { style: "width:" + Math.min(100, Math.round((c.row || 0) / total * 100)) + "%" })) : null);
+}
+VIEWS.projects = main => {
+  if (route.id) { const pr = byId(data.projects, route.id); if (!pr) return go("projects"); return route.sub === "count" ? counterView(main, pr) : projectDetail(main, pr); }
+  const q = (settings.q_projects || "").toLowerCase(); const f = settings.f_projects || "open";
+  let list = data.projects.filter(p => !q || [p.name, byId(data.patterns, p.patternId)?.name, p.notes].join(" ").toLowerCase().includes(q));
+  if (f === "open") list = list.filter(p => p.status === "active" || p.status === "planning" || p.status === "hibernating");
+  else if (f !== "all") list = list.filter(p => p.status === f);
+  list.sort((a, b) => (b.updated || "").localeCompare(a.updated || ""));
+  main.append(el("div", { class: "toolbar" }, el("h2", null, "Projects"),
+    el("input", { type: "search", placeholder: "Search projects…", value: settings.q_projects || "", oninput: e => { settings.q_projects = e.target.value; saveSettings(); render(); } }),
+    (() => { const s = el("select", { style: "width:auto", onchange: e => { settings.f_projects = e.target.value; saveSettings(); render(); } }, [["open", "Open"], ["all", "All"], ...STATUSES].map(o => el("option", { value: o[0], selected: f === o[0] }, o[1]))); return s; })(),
+    el("button", { class: "btn primary", onclick: () => newProjectDlg() }, "+ New")));
+  const active = data.projects.filter(p => p.status === "active").length, done = data.projects.filter(p => p.status === "finished").length;
+  if (data.projects.length) main.append(el("div", { class: "stat" }, el("div", { class: "card" }, el("b", null, active), el("span", { class: "muted small" }, "in progress")), el("div", { class: "card" }, el("b", null, done), el("span", { class: "muted small" }, "finished")), el("div", { class: "card" }, el("b", null, data.patterns.length), el("span", { class: "muted small" }, "patterns")), el("div", { class: "card" }, el("b", null, data.yarns.length), el("span", { class: "muted small" }, "yarns"))));
+  if (!data.projects.length) main.append(el("div", { class: "empty" }, el("b", null, "No projects yet"), "Start one from a pattern, or create a project and link a pattern later."));
+  else if (!list.length) main.append(el("div", { class: "empty" }, "No projects match."));
+  main.append(el("div", { class: "grid" }, list.map(projectCard)));
+};
+function newProjectDlg(init = {}) {
+  const pr = newProject(init);
+  const hookIn = inp(pr, "hook", { list: datalist("dl-hooks", HOOK_SIZES) });
+  const body = el("div", null, field("Project name", inp(pr, "name", { placeholder: "e.g. Baby blanket for Ana" })),
+    field("Pattern", sel(pr, "patternId", [["", "— none —"], ...data.patterns.map(p => [p.id, p.name])], v => { const p = byId(data.patterns, v); if (p && !pr.hook) { pr.hook = p.hook; hookIn.value = p.hook || ""; } })),
+    el("div", { class: "row" }, field("Status", sel(pr, "status", STATUSES)), field("Hook", hookIn)),
+    field("Started", inp(pr, "started", { type: "date" })));
+  openModal("New project", body, [{ label: "Cancel" }, "spacer", { label: "Create", cls: "primary", run: () => { flushSave(); if (!pr.name.trim()) pr.name = byId(data.patterns, pr.patternId)?.name || "Untitled project"; data.projects.push(pr); markDirty(); go("projects", pr.id); } }]);
+}
+function editProjectDlg(pr) {
+  const body = el("div", null, field("Project name", inp(pr, "name")),
+    field("Pattern", sel(pr, "patternId", [["", "— none —"], ...data.patterns.map(p => [p.id, p.name])])),
+    el("div", { class: "row" }, field("Status", sel(pr, "status", STATUSES, v => { if (v === "finished" && !pr.finished) pr.finished = today(); })), field("Hook", inp(pr, "hook", { list: datalist("dl-hooks", HOOK_SIZES) }))),
+    el("div", { class: "row" }, field("Started", inp(pr, "started", { type: "date" })), field("Finished", inp(pr, "finished", { type: "date" }))),
+    field("Notes", inp(pr, "notes", { type: "textarea", placeholder: "Modifications, gauge, sizing, who it's for…" })));
+  openModal("Edit project", body, [{ label: "Cancel" }, "spacer", { label: "Save", cls: "primary", run: () => { flushSave(); pr.updated = new Date().toISOString(); markDirty(); render(); } }]);
+}
+function projectDetail(main, pr) {
+  const pat = byId(data.patterns, pr.patternId); const c = pr.counter;
+  main.append(el("div", { class: "detail-head" }, el("button", { class: "btn small", onclick: () => go("projects") }, "‹ Projects"), el("h2", null, pr.name),
+    el("button", { class: "btn small", onclick: () => editProjectDlg(pr) }, "Edit"),
+    el("button", { class: "btn small danger", onclick: async () => { if (await confirmDlg(`Delete project "${pr.name}"?`)) { for (const a of pr.attachments || []) idb.del(a.id).catch(() => {}); removeById(data.projects, pr.id); markDirty(); go("projects"); } } }, "Delete")));
+  const total = c.rowTarget || pat?.rows?.length || 0;
+  main.append(el("div", { class: "card", style: "display:flex;gap:14px;align-items:center;flex-wrap:wrap" },
+    el("div", { style: "flex:1;min-width:160px" }, el("div", { class: "muted small" }, "Current row"), el("div", { style: "font-size:2.2rem;font-weight:700;line-height:1.1" }, c.row, total ? el("small", { class: "muted", style: "font-size:1rem;font-weight:400" }, " / " + total) : null),
+      c.repEnabled ? el("div", { class: "muted small" }, "Repeat " + c.rep + (c.repTarget ? " / " + c.repTarget : "")) : null,
+      total ? el("div", { class: "progress", style: "max-width:260px" }, el("i", { style: "width:" + Math.min(100, Math.round(c.row / total * 100)) + "%" })) : null),
+    el("button", { class: "btn primary", style: "font-size:1.05rem;padding:12px 20px", onclick: () => go("projects", pr.id, "count") }, "Open counter →")));
+  const dl = el("dl", { class: "kv" });
+  const kv = (k, v) => { if (v) dl.append(el("dt", null, k), el("dd", null, v)); };
+  dl.append(el("dt", null, "Status"), el("dd", null, el("span", { class: "pill " + pr.status }, statusLabel(pr.status))));
+  if (pat) dl.append(el("dt", null, "Pattern"), el("dd", null, el("a", { href: "#", onclick: e => { e.preventDefault(); go("patterns", pat.id); } }, pat.name)));
+  kv("Hook", pr.hook); kv("Started", fmtDate(pr.started)); kv("Finished", fmtDate(pr.finished));
+  main.append(el("div", { class: "card", style: "margin-top:12px" }, dl, pr.notes ? el("div", { class: "notes", style: "margin-top:10px" }, pr.notes) : null));
+  // yarns
+  pr.yarnIds ||= [];
+  const ysec = el("div", { class: "section" }, el("div", { class: "flex" }, el("h3", { style: "flex:1" }, "Yarn ", el("span", { class: "cnt" }, pr.yarnIds.length)), el("button", { class: "btn small", onclick: () => pickYarnDlg(pr) }, "+ Add yarn")));
+  const chips = el("div", { class: "chips", style: "margin-top:6px" });
+  for (const yid of pr.yarnIds) { const y = byId(data.yarns, yid); if (!y) continue; chips.append(el("span", { class: "chip" }, el("a", { href: "#", onclick: e => { e.preventDefault(); go("yarns", y.id); } }, yarnTitle(y)), el("button", { onclick: () => { pr.yarnIds = pr.yarnIds.filter(i => i !== yid); markDirty(); render(); }, title: "Remove" }, "×"))); }
+  if (!pr.yarnIds.length) chips.append(el("span", { class: "muted small" }, "No yarn linked yet."));
+  ysec.append(chips); main.append(ysec);
+  main.append(attachmentsSection(pr, { title: "Progress photos ", accept: "image/*,.pdf", empty: "Snap progress photos as you go." }));
+}
+function pickYarnDlg(pr) {
+  const q = el("input", { type: "search", placeholder: "Search your stash…" });
+  const list = el("div", { class: "rowlist", style: "margin-top:8px" });
+  const draw = () => { const s = q.value.toLowerCase(); list.replaceChildren(...data.yarns.filter(y => !pr.yarnIds.includes(y.id) && (!s || yarnTitle(y).toLowerCase().includes(s))).map(y => el("div", { onclick: () => { pr.yarnIds.push(y.id); markDirty(); m.close(); render(); } }, el("span", null, yarnTitle(y), " ", el("span", { class: "muted small" }, [y.weight, y.colorway].filter(Boolean).join(" · ")))))); if (!list.children.length) list.append(el("div", { class: "muted" }, data.yarns.length ? "No matches." : "Your stash is empty — add yarn in the Yarn tab.")); };
+  q.addEventListener("input", draw); draw();
+  const m = openModal("Add yarn to project", el("div", null, q, list), [{ label: "Close" }]);
+}
+
+/* ========== row counter ========== */
+function counterView(main, pr) {
+  const pat = byId(data.patterns, pr.patternId); const c = pr.counter; c.history ||= [];
+  const rows = pat?.rows || []; const total = c.rowTarget || rows.length || 0;
+  let wake = null;
+  const wakeLock = async () => { try { wake = await navigator.wakeLock?.request("screen"); } catch {} };
+  wakeLock();
+  const push = (label) => { c.history.push({ row: c.row, rep: c.rep, t: Date.now(), label }); if (c.history.length > 200) c.history.shift(); };
+  const commit = () => { pr.updated = new Date().toISOString(); if (pr.status === "planning") pr.status = "active"; markDirty(); paint(); };
+  const inc = () => { push("+row"); c.row++; if (c.repEnabled && c.repTarget && c.rep >= c.repTarget) c.rep = 0; commit(); if (total && c.row === total) toast("🎉 Last row reached!"); };
+  const dec = () => { if (c.row > 0) { push("-row"); c.row--; commit(); } };
+  const incRep = () => { push("+rep"); c.rep++; if (c.repTarget && c.rep >= c.repTarget) { toast("Repeat complete → row " + (c.row + 1)); c.rep = 0; c.row++; } commit(); };
+  const decRep = () => { if (c.rep > 0) { push("-rep"); c.rep--; commit(); } };
+  const undo = () => { const h = c.history.pop(); if (!h) return toast("Nothing to undo"); c.row = h.row; c.rep = h.rep; commit(); };
+  const rowCard = el("div", { class: "count-card" });
+  const repCard = el("div", { class: "count-card secondary" });
+  const side = el("div");
+  function paint() {
+    const cur = rows.find(r => r.n === c.row), next = rows.find(r => r.n === c.row + 1);
+    rowCard.replaceChildren(el("div", { class: "lbl" }, "Row"), el("div", { class: "num" }, c.row, total ? el("small", null, " / " + total) : null),
+      total ? el("div", { class: "progress" }, el("i", { style: "width:" + Math.min(100, Math.round(c.row / total * 100)) + "%" })) : null,
+      el("div", { class: "bigbtns" }, el("button", { onclick: dec, "aria-label": "minus one row" }, "−"), el("button", { class: "plus", onclick: inc, "aria-label": "plus one row" }, "+")),
+      cur ? el("div", { class: "instr" }, el("div", { class: "n" }, "Just finished · " + rowLabel(cur)), cur.text) : null,
+      next ? el("div", { class: "instr next" }, el("div", { class: "n" }, "Next · " + rowLabel(next)), next.note ? el("div", { class: "muted small" }, next.note) : null, next.text) : null,
+      el("div", { class: "mini" }, el("button", { class: "btn small", onclick: undo }, "↶ Undo"),
+        el("button", { class: "btn small", onclick: () => { const v = prompt("Set current row", c.row); if (v !== null && !isNaN(+v)) { push("set"); c.row = Math.max(0, +v); commit(); } } }, "Set row…"),
+        el("button", { class: "btn small", onclick: () => { const v = prompt("Total rows in this project (0 = use pattern)", c.rowTarget || ""); if (v !== null && !isNaN(+v)) { c.rowTarget = Math.max(0, +v); markDirty(); go("projects", pr.id, "count"); } } }, "Target…"),
+        el("button", { class: "btn small danger", onclick: async () => { if (await confirmDlg("Reset row and repeat counters to 0?", "Reset")) { push("reset"); c.row = 0; c.rep = 0; commit(); } } }, "Reset")));
+    if (c.repEnabled) repCard.replaceChildren(el("div", { class: "lbl" }, "Repeat / stitch counter"), el("div", { class: "num" }, c.rep, c.repTarget ? el("small", null, " / " + c.repTarget) : null),
+      el("div", { class: "bigbtns" }, el("button", { onclick: decRep }, "−"), el("button", { class: "plus", onclick: incRep }, "+")),
+      el("div", { class: "mini" }, el("button", { class: "btn small", onclick: () => { const v = prompt("Repeat target — when reached, the repeat resets and the row advances (0 = no target)", c.repTarget || ""); if (v !== null && !isNaN(+v)) { c.repTarget = Math.max(0, +v); commit(); } } }, "Target…"),
+        el("button", { class: "btn small", onclick: () => { c.rep = 0; commit(); } }, "Zero"), el("button", { class: "btn small", onclick: () => { c.repEnabled = false; commit(); } }, "Hide")));
+    else repCard.replaceChildren(el("div", { class: "lbl" }, "Repeat / stitch counter"), el("p", { class: "muted small" }, "Count pattern repeats or stitches within a row. Optional target auto-advances the row."), el("button", { class: "btn", onclick: () => { c.repEnabled = true; commit(); } }, "Enable second counter"));
+    side.replaceChildren(repCard);
+    if (rows.length) {
+      const rl = el("div", { class: "rowlist", style: "margin-top:12px;max-height:40vh" }, rows.map(r => el("div", { class: r.n === c.row ? "cur" : r.n < c.row ? "done" : "", onclick: () => { push("jump"); c.row = r.n; commit(); } }, el("b", null, rowLabel(r)), el("span", null, r.text))));
+      side.append(el("h3", { style: "margin-top:14px" }, "Pattern rows ", el("span", { class: "cnt" }, "tap to jump")), rl);
+      setTimeout(() => { const cur = rl.querySelector(".cur"); if (cur) rl.scrollTop = Math.max(0, cur.offsetTop - rl.clientHeight / 2 + cur.offsetHeight / 2); }, 0);
+    }
+  }
+  main.append(el("div", { class: "detail-head" }, el("button", { class: "btn small", onclick: () => { wake?.release?.(); go("projects", pr.id); } }, "‹ " + pr.name), el("h2", null, ""), pat ? el("span", { class: "muted small" }, pat.name) : null));
+  main.append(el("div", { class: "counter" }, rowCard, side));
+  main.append(el("p", { class: "muted small", style: "margin-top:12px" }, "Tip: on a phone, add this page to your Home Screen for a full-screen counter. Space/→ = +1 row, ← = −1, Z = undo."));
+  paint();
+  const key = e => { if (route.sub !== "count" || document.querySelector(".modal-bg") || /INPUT|TEXTAREA/.test(document.activeElement?.tagName)) return; if (e.key === " " || e.key === "ArrowRight" || e.key === "+") { e.preventDefault(); inc(); } else if (e.key === "ArrowLeft" || e.key === "-") dec(); else if (e.key.toLowerCase() === "z") undo(); };
+  document.addEventListener("keydown", key);
+  const obs = new MutationObserver(() => { if (!document.body.contains(rowCard)) { document.removeEventListener("keydown", key); obs.disconnect(); } });
+  obs.observe($("#main"), { childList: true });
+}
+/* ========== yarn stash ========== */
+function newYarn(init = {}) { return Object.assign({ id: uid(), upc: "", brand: "", name: "", colorway: "", color: "", weight: "", fiber: "", yards: "", grams: "", qty: 1, hook: "", price: "", store: "", notes: "", image: null, added: today() }, init); }
+const yarnTitle = y => [y.brand, y.name].filter(Boolean).join(" ") || y.colorway || "Unnamed yarn";
+const normUPC = s => String(s || "").replace(/\D/g, "");
+function findYarnByUPC(upc) { upc = normUPC(upc); if (!upc) return null; return data.yarns.find(y => normUPC(y.upc) === upc || (upc.length === 12 && normUPC(y.upc) === "0" + upc) || (upc.length === 13 && normUPC(y.upc) === upc.slice(1))); }
+
+VIEWS.yarns = main => {
+  if (route.id) return yarnDetail(main, byId(data.yarns, route.id));
+  const q = (settings.q_yarns || "").toLowerCase();
+  const list = data.yarns.filter(y => !q || [y.brand, y.name, y.colorway, y.color, y.weight, y.fiber, y.upc, y.notes].join(" ").toLowerCase().includes(q)).sort((a, b) => yarnTitle(a).localeCompare(yarnTitle(b)));
+  main.append(el("div", { class: "toolbar" }, el("h2", null, "Yarn stash"),
+    el("input", { type: "search", placeholder: "Search brand, color, weight, UPC…", value: settings.q_yarns || "", oninput: e => { settings.q_yarns = e.target.value; saveSettings(); render(); } }),
+    el("button", { class: "btn", onclick: () => scanDlg() }, "▦ Scan UPC"),
+    el("button", { class: "btn primary", onclick: () => yarnDlg(newYarn()) }, "+ Add")));
+  const skeins = data.yarns.reduce((s, y) => s + (+y.qty || 0), 0), yards = data.yarns.reduce((s, y) => s + (+y.qty || 0) * (+y.yards || 0), 0);
+  if (data.yarns.length) main.append(el("div", { class: "stat" }, el("div", { class: "card" }, el("b", null, data.yarns.length), el("span", { class: "muted small" }, "yarns")), el("div", { class: "card" }, el("b", null, skeins), el("span", { class: "muted small" }, "skeins")), el("div", { class: "card" }, el("b", null, yards.toLocaleString()), el("span", { class: "muted small" }, "yards"))));
+  if (!data.yarns.length) main.append(el("div", { class: "empty" }, el("b", null, "Your stash is empty"), "Scan a label's barcode or add yarn by hand. Scanned yarns are remembered, so the next skein of the same yarn fills in instantly."));
+  else if (!list.length) main.append(el("div", { class: "empty" }, "No yarn matches."));
+  main.append(el("div", { class: "grid" }, list.map(y => el("div", { class: "card click", onclick: () => go("yarns", y.id) }, el("div", { class: "flex" }, yarnSwatch(y), el("div", { style: "flex:1;min-width:0" }, el("div", { class: "title" }, yarnTitle(y)), el("div", { class: "sub" }, [y.colorway, y.color].filter(Boolean).join(" · ") || "—"))),
+    el("div", { class: "meta" }, y.weight ? el("span", { class: "pill" }, y.weight.split(" – ")[1] || y.weight) : null, el("span", { class: "pill" }, (y.qty || 0) + " × " + (y.yards ? y.yards + " yd" : "skein")), y.fiber ? el("span", { class: "pill" }, y.fiber) : null)))));
+};
+function yarnSwatch(y) {
+  const s = el("div", { class: "yarnswatch" });
+  if (y.image) { const img = el("img", { alt: "" }); attachmentURL(y.image).then(u => { if (u) img.src = u; }); s.append(img); }
+  else if (y.color && CSS.supports("color", y.color)) s.style.background = y.color;
+  else s.append("🧶");
+  return s;
+}
+function yarnDetail(main, y) {
+  if (!y) return go("yarns");
+  main.append(el("div", { class: "detail-head" }, el("button", { class: "btn small", onclick: () => go("yarns") }, "‹ Stash"), el("h2", null, yarnTitle(y)),
+    el("button", { class: "btn small", onclick: () => yarnDlg(y) }, "Edit"),
+    el("button", { class: "btn small danger", onclick: async () => { if (await confirmDlg(`Delete ${yarnTitle(y)} from your stash?`)) { if (y.image) idb.del(y.image).catch(() => {}); removeById(data.yarns, y.id); for (const pr of data.projects) pr.yarnIds = (pr.yarnIds || []).filter(i => i !== y.id); markDirty(); go("yarns"); } } }, "Delete")));
+  const dl = el("dl", { class: "kv" });
+  const kv = (k, v) => { if (v !== "" && v != null) dl.append(el("dt", null, k), el("dd", null, v)); };
+  kv("Colorway", y.colorway); kv("Color", y.color); kv("Weight", y.weight); kv("Fiber", y.fiber); kv("Per skein", [y.yards && y.yards + " yd", y.grams && y.grams + " g"].filter(Boolean).join(" / ")); kv("Quantity", y.qty); kv("Suggested hook", y.hook); kv("UPC", y.upc); kv("Price", y.price); kv("Store", y.store); kv("Added", fmtDate(y.added));
+  const card = el("div", { class: "card" }, el("div", { class: "flex", style: "align-items:flex-start" }, (() => { const s = yarnSwatch(y); s.style.width = "80px"; s.style.height = "80px"; s.style.borderRadius = "12px"; s.style.fontSize = "2rem"; return s; })(), el("div", { style: "flex:1" }, dl)), y.notes ? el("div", { class: "notes", style: "margin-top:10px" }, y.notes) : null);
+  main.append(card);
+  const qtyRow = el("div", { class: "card flex", style: "margin-top:12px" }, el("span", { style: "flex:1" }, "Skeins on hand"), el("button", { class: "btn", onclick: () => { y.qty = Math.max(0, (+y.qty || 0) - 1); markDirty(); render(); } }, "−"), el("b", { style: "min-width:2ch;text-align:center" }, y.qty || 0), el("button", { class: "btn", onclick: () => { y.qty = (+y.qty || 0) + 1; markDirty(); render(); } }, "+"));
+  main.append(qtyRow);
+  const used = data.projects.filter(p => (p.yarnIds || []).includes(y.id));
+  main.append(el("div", { class: "section" }, el("h3", null, "Used in ", el("span", { class: "cnt" }, used.length)), used.length ? el("div", { class: "grid" }, used.map(projectCard)) : el("p", { class: "muted small" }, "Not linked to any project.")));
+}
+function yarnDlg(y, opts = {}) {
+  const isNew = !byId(data.yarns, y.id);
+  const upcIn = inp(y, "upc", { inputmode: "numeric", placeholder: "Scan or type barcode" });
+  const lookupBtn = el("button", { class: "btn small", type: "button", onclick: () => lookupUPC(y, upcIn.value, fillFrom) }, "Look up");
+  const scanBtn = el("button", { class: "btn small", type: "button", onclick: () => scanDlg(code => { y.upc = code; upcIn.value = code; lookupUPC(y, code, fillFrom); }) }, "▦ Scan");
+  const fields = {};
+  const mk = (k, o) => (fields[k] = inp(y, k, o));
+  const status = el("div", { class: "muted small", style: "margin:-4px 0 10px" });
+  function fillFrom(info, src) {
+    for (const k in info) if (info[k] && !y[k]) { y[k] = info[k]; if (fields[k]) fields[k].value = info[k]; }
+    if (info.weight && fields.weight) fields.weight.value = y.weight;
+    status.textContent = src ? "Filled from " + src + " — check and correct anything." : "";
+    markDirty();
+  }
+  yarnDlg.status = status;
+  const imgIn = el("input", { type: "file", accept: "image/*", capture: "environment", style: "display:none", onchange: async e => { const f = e.target.files[0]; if (!f) return; const rec = await storeFile(await shrinkImage(f)); y.image = rec.id; markDirty(); toast("Photo attached"); } });
+  const body = el("div", null,
+    field("UPC / barcode", el("div", { class: "flex" }, upcIn, scanBtn, lookupBtn)), status,
+    el("div", { class: "row" }, field("Brand", mk("brand", { placeholder: "Lion Brand", list: datalist("dl-brands", data.yarns.map(x => x.brand)) })), field("Yarn line", mk("name", { placeholder: "Wool-Ease Thick & Quick" }))),
+    el("div", { class: "row" }, field("Colorway", mk("colorway", { placeholder: "Fisherman" })), field("Color (name or CSS color)", mk("color", { placeholder: "cream / #f3e9d2" }))),
+    el("div", { class: "row" }, field("Weight", (fields.weight = sel(y, "weight", [["", "—"], ...YARN_WEIGHTS]))), field("Fiber", mk("fiber", { placeholder: "80% acrylic, 20% wool" }))),
+    el("div", { class: "row" }, field("Yards / skein", mk("yards", { type: "number", inputmode: "decimal" })), field("Grams / skein", mk("grams", { type: "number", inputmode: "decimal" })), field("Skeins", mk("qty", { type: "number", inputmode: "numeric" }))),
+    el("div", { class: "row" }, field("Suggested hook", mk("hook", { list: datalist("dl-hooks", HOOK_SIZES) })), field("Price", mk("price", { placeholder: "$" })), field("Store", mk("store"))),
+    field("Notes", mk("notes", { type: "textarea", placeholder: "Dye lot, project ideas, care…" })),
+    el("button", { class: "btn small", type: "button", onclick: () => imgIn.click() }, "📷 Label photo"), imgIn);
+  openModal(isNew ? "Add yarn" : "Edit yarn", body, [{ label: "Cancel" }, "spacer", { label: isNew ? "Add to stash" : "Save", cls: "primary", run: () => {
+    flushSave(); if (!y.brand && !y.name && !y.colorway && !y.upc) { toast("Give the yarn at least a brand, name, or UPC"); return false; }
+    if (isNew) data.yarns.push(y); markDirty(); opts.onsave?.(y); render();
+  } }]);
+  if (opts.autoLookup && y.upc) lookupUPC(y, y.upc, fillFrom);
+}
+async function shrinkImage(file, max = 1200) {
+  try {
+    const bmp = await createImageBitmap(file); const s = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas"); c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
+    return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch { return file; }
+}
+
+/* ---- UPC lookup: local stash first, then the free UPCitemdb trial API ---- */
+const WEIGHT_WORDS = [[/lace|thread/i, YARN_WEIGHTS[0]], [/super\s*fine|fingering|sock/i, YARN_WEIGHTS[1]], [/\bsport\b|\bfine\b/i, YARN_WEIGHTS[2]], [/\bdk\b|double knit|light worsted|\blight\b/i, YARN_WEIGHTS[3]], [/worsted|aran|medium|\b4\b/i, YARN_WEIGHTS[4]], [/super\s*bulky|\b6\b/i, YARN_WEIGHTS[6]], [/bulky|chunky|\b5\b/i, YARN_WEIGHTS[5]], [/jumbo|\b7\b/i, YARN_WEIGHTS[7]]];
+function guessFromTitle(title, brand) {
+  const t = String(title || ""); const info = {};
+  const w = WEIGHT_WORDS.find(([re]) => re.test(t)); if (w) info.weight = w[1];
+  const yd = t.match(/(\d{2,4})\s*(?:yds?|yards?)/i); if (yd) info.yards = yd[1];
+  const g = t.match(/(\d{2,4})\s*(?:g|grams?|gr)\b/i); if (g) info.grams = g[1];
+  const oz = t.match(/(\d+(?:\.\d+)?)\s*oz/i); if (oz && !g) info.grams = Math.round(+oz[1] * 28.35);
+  const fib = t.match(/(\d{2,3}%\s*[a-z]+(?:\s*[,/&]\s*\d{2,3}%\s*[a-z]+)*)/i); if (fib) info.fiber = fib[1];
+  if (brand) info.brand = brand;
+  let name = t; if (brand) name = name.replace(new RegExp(brand.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), "");
+  name = name.replace(/\b(yarn|skein|ball|hank|\d+\s*(?:yds?|yards?|g|grams?|oz)|\d+\s*pack|pack of \d+|\(.*?\))\b/gi, " ").replace(/[-–|,]+/g, " ").replace(/\s{2,}/g, " ").trim();
+  const dash = t.split(/\s[-–|]\s/); if (dash.length > 1) { info.name = dash[0].replace(brand || "", "").trim(); info.colorway = dash[1].replace(fib ? fib[1] : "", "").replace(/\b(yarn|skein|ball|\d+(?:\.\d+)?\s*(?:yds?|yards?|g|grams?|oz))\b/gi, "").replace(/\s{2,}/g, " ").trim(); }
+  else info.name = name.slice(0, 60);
+  return info;
+}
+async function lookupUPC(y, code, fill) {
+  code = normUPC(code); if (!code) return toast("Enter or scan a barcode first");
+  const st = yarnDlg.status; if (st) st.textContent = "Looking up " + code + "…";
+  const local = findYarnByUPC(code);
+  if (local && local.id !== y.id) { const { id, qty, notes, added, image, ...rest } = local; fill(rest, "your stash (" + yarnTitle(local) + ")"); return; }
+  if (!navigator.onLine) { if (st) st.textContent = "Offline — fill in the details by hand and they'll be remembered for this UPC."; return; }
+  try {
+    const key = settings.upcApiKey;
+    const url = (key ? "https://api.upcitemdb.com/prod/v1/lookup?upc=" : "https://api.upcitemdb.com/prod/trial/lookup?upc=") + encodeURIComponent(code);
+    const headers = key ? { user_key: key, key_type: "3scale" } : {};
+    const res = await fetch(url, { headers });
+    if (res.status === 429) { if (st) st.textContent = "Free lookup limit reached for today — enter details by hand (or add an API key in Data → Settings)."; return; }
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const j = await res.json(); const it = j.items?.[0];
+    if (!it) { if (st) st.textContent = "No match for " + code + " — fill in the details and it'll be remembered."; return; }
+    const info = guessFromTitle(it.title, it.brand); if (it.description) info.notes = it.description.slice(0, 300);
+    fill(info, "UPCitemdb");
+    if (it.images?.[0] && !y.image) { try { const b = await (await fetch(it.images[0])).blob(); const rec = await storeFile(new File([b], "label.jpg", { type: b.type || "image/jpeg" })); y.image = rec.id; } catch {} }
+  } catch (e) {
+    console.warn(e); if (st) st.textContent = "Lookup unavailable (" + (e.message || "network") + ") — enter the details by hand; they'll be remembered for this UPC.";
+  }
+}
+
+/* ---- barcode scanner (BarcodeDetector where available, manual fallback) ---- */
+function scanDlg(onCode) {
+  const handle = code => {
+    if (onCode) return onCode(code);
+    const hit = findYarnByUPC(code);
+    if (hit) { toast("Found in stash: " + yarnTitle(hit)); openModal(yarnTitle(hit), el("p", null, "This yarn is already in your stash (", el("b", null, hit.qty || 0), " skeins). Add one more?"), [{ label: "Open", run: () => go("yarns", hit.id) }, "spacer", { label: "+1 skein", cls: "primary", run: () => { hit.qty = (+hit.qty || 0) + 1; markDirty(); go("yarns", hit.id); } }]); }
+    else yarnDlg(newYarn({ upc: code }), { autoLookup: true });
+  };
+  const manual = el("input", { type: "text", inputmode: "numeric", placeholder: "Type the 12/13-digit code" });
+  const body = el("div", { class: "scan" });
+  const hint = el("div", { class: "hint" });
+  let stream = null, timer = null;
+  const stop = () => { clearInterval(timer); stream?.getTracks().forEach(t => t.stop()); };
+  const m = openModal("Scan barcode", body, [{ label: "Cancel", run: stop }, "spacer", { label: "Use typed code", cls: "primary", run: () => { const c = normUPC(manual.value); if (c.length < 8) { toast("Enter a full barcode"); return false; } stop(); handle(c); } }]);
+  (async () => {
+    if (!("BarcodeDetector" in window) || !navigator.mediaDevices?.getUserMedia) { body.append(el("p", { class: "muted small" }, "Live scanning isn't supported in this browser (Safari 17+/Chrome needed, and the page must be served over https). Type the code from under the barcode instead."), manual); return; }
+    try {
+      const fmts = (await BarcodeDetector.getSupportedFormats?.()) || [];
+      const det = new BarcodeDetector({ formats: ["upc_a", "upc_e", "ean_13", "ean_8"].filter(f => !fmts.length || fmts.includes(f)) });
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+      const v = el("video", { autoplay: true, playsinline: true, muted: true }); v.srcObject = stream; body.append(v, hint, manual); hint.textContent = "Point the camera at the barcode on the yarn label.";
+      let last = "", hits = 0;
+      timer = setInterval(async () => { try { const codes = await det.detect(v); const c = codes.find(x => normUPC(x.rawValue).length >= 8); if (!c) return; const val = normUPC(c.rawValue); if (val === last) hits++; else { last = val; hits = 1; } if (hits >= 2) { stop(); m.close(); handle(val); } } catch {} }, 250);
+    } catch (e) { body.append(el("p", { class: "muted small" }, "Camera not available (" + (e.message || e.name) + "). Type the code instead."), manual); }
+  })();
+}
+/* ========== supplies ========== */
+const SUPPLY_CATS = ["Hooks", "Needles", "Stitch markers", "Scissors & tools", "Stuffing & fill", "Safety eyes & notions", "Buttons & closures", "Storage", "Books", "Other"];
+function newSupply(init = {}) { return Object.assign({ id: uid(), name: "", category: "Hooks", size: "", qty: 1, brand: "", notes: "", added: today() }, init); }
+VIEWS.supplies = main => {
+  const q = (settings.q_supplies || "").toLowerCase();
+  const list = data.supplies.filter(s => !q || [s.name, s.category, s.size, s.brand, s.notes].join(" ").toLowerCase().includes(q));
+  main.append(el("div", { class: "toolbar" }, el("h2", null, "Supplies"),
+    el("input", { type: "search", placeholder: "Search supplies…", value: settings.q_supplies || "", oninput: e => { settings.q_supplies = e.target.value; saveSettings(); render(); } }),
+    el("button", { class: "btn", onclick: () => addHookSetDlg() }, "Add hook set"),
+    el("button", { class: "btn primary", onclick: () => supplyDlg(newSupply()) }, "+ Add")));
+  if (!data.supplies.length) main.append(el("div", { class: "empty" }, el("b", null, "No supplies yet"), "Track hooks, stitch markers, safety eyes, stuffing — anything you'd want to check before buying twice."));
+  else if (!list.length) main.append(el("div", { class: "empty" }, "No supplies match."));
+  const cats = [...new Set(list.map(s => s.category))].sort((a, b) => SUPPLY_CATS.indexOf(a) - SUPPLY_CATS.indexOf(b));
+  for (const c of cats) {
+    const items = list.filter(s => s.category === c).sort((a, b) => sizeKey(a.size) - sizeKey(b.size) || a.name.localeCompare(b.name));
+    main.append(el("div", { class: "section" }, el("h3", null, c, " ", el("span", { class: "cnt" }, items.length)),
+      el("div", { class: "card", style: "padding:0" }, items.map(s => el("div", { class: "flex", style: "padding:10px 14px;border-bottom:1px solid var(--line);cursor:pointer", onclick: () => supplyDlg(s) },
+        el("div", { style: "flex:1;min-width:0" }, el("div", null, el("b", null, s.size ? s.size + " " : ""), s.name), s.brand || s.notes ? el("div", { class: "muted small" }, [s.brand, s.notes].filter(Boolean).join(" · ")) : null),
+        el("button", { class: "btn small", onclick: e => { e.stopPropagation(); s.qty = Math.max(0, (+s.qty || 0) - 1); markDirty(); render(); } }, "−"), el("b", { style: "min-width:2ch;text-align:center" }, s.qty), el("button", { class: "btn small", onclick: e => { e.stopPropagation(); s.qty = (+s.qty || 0) + 1; markDirty(); render(); } }, "+"))))));
+  }
+};
+const sizeKey = s => { const m = String(s || "").match(/(\d+(?:\.\d+)?)/); return m ? +m[1] : 999; };
+function supplyDlg(s) {
+  const isNew = !byId(data.supplies, s.id);
+  const body = el("div", null, el("div", { class: "row" }, field("Category", sel(s, "category", SUPPLY_CATS)), field("Size", inp(s, "size", { placeholder: "5.0 mm (H-8)", list: datalist("dl-hooks", HOOK_SIZES) }))),
+    field("Name", inp(s, "name", { placeholder: "Ergonomic hook, locking markers…" })),
+    el("div", { class: "row" }, field("Brand", inp(s, "brand", { placeholder: "Clover, Furls…" })), field("Quantity", inp(s, "qty", { type: "number", inputmode: "numeric" }))),
+    field("Notes", inp(s, "notes", { type: "textarea" })));
+  openModal(isNew ? "Add supply" : "Edit supply", body, [isNew ? { label: "Cancel" } : { label: "Delete", cls: "danger", run: async () => { if (await confirmDlg("Delete this supply?")) { removeById(data.supplies, s.id); markDirty(); render(); } else return false; } }, "spacer", { label: isNew ? "Add" : "Save", cls: "primary", run: () => { flushSave(); if (!s.name.trim() && !s.size.trim()) { toast("Give it a name or size"); return false; } if (isNew) data.supplies.push(s); markDirty(); render(); } }]);
+}
+function addHookSetDlg() {
+  const chosen = new Set(HOOK_SIZES.filter(h => !data.supplies.some(s => s.category === "Hooks" && s.size === h)));
+  const brand = { v: "" };
+  const boxes = HOOK_SIZES.map(h => { const cb = el("input", { type: "checkbox", checked: chosen.has(h), style: "width:auto", onchange: e => e.target.checked ? chosen.add(h) : chosen.delete(h) }); return el("label", { class: "flex", style: "padding:4px 0" }, cb, h); });
+  openModal("Add a set of hooks", el("div", null, field("Brand (optional)", inp(brand, "v", { placeholder: "Clover Amour" })), el("div", { style: "columns:2" }, boxes)), [{ label: "Cancel" }, "spacer", { label: "Add selected", cls: "primary", run: () => { flushSave(); for (const h of HOOK_SIZES) if (chosen.has(h)) data.supplies.push(newSupply({ category: "Hooks", size: h, name: "Crochet hook", brand: brand.v })); markDirty(); render(); } }]);
+}
+
+/* ========== data: export / import / settings ========== */
+VIEWS.data = main => {
+  main.append(el("div", { class: "toolbar" }, el("h2", null, "Data & settings")));
+  const counts = `${data.projects.length} projects · ${data.patterns.length} patterns · ${data.yarns.length} yarns · ${data.supplies.length} supplies`;
+  const store = el("div", { class: "muted small" }, "Calculating storage…");
+  idb.all().then(all => { const b = all.reduce((s, r) => s + (r.size || r.blob?.size || 0), 0); store.textContent = `${all.length} attached file(s), ${(b / 1048576).toFixed(1)} MB in this browser's storage · data rev ${data.sync.rev}${data.sync.modified ? ", last saved " + new Date(data.sync.modified).toLocaleString() : ""}`; }).catch(() => store.textContent = "Attachments unavailable in this browser.");
+  const withFiles = el("input", { type: "checkbox", style: "width:auto", checked: true });
+  main.append(el("div", { class: "card" }, el("h3", null, "Backup"), el("p", { class: "small" }, "Everything lives in this browser on this device. Export a backup regularly and keep it in iCloud Drive, Dropbox, or the GitHub repo — then import it on another device to move your data over."),
+    el("p", { class: "small" }, counts), store,
+    el("label", { class: "flex small", style: "margin:10px 0" }, withFiles, "Include PDFs and photos (bigger file)"),
+    el("div", { class: "flex", style: "flex-wrap:wrap" }, el("button", { class: "btn primary", onclick: () => exportData(withFiles.checked) }, "⬇ Export backup"),
+      el("button", { class: "btn", onclick: () => importFileIn.click() }, "⬆ Import backup"), importFileIn)));
+  const keyIn = el("input", { type: "password", value: settings.upcApiKey || "", placeholder: "Optional — paid UPCitemdb key", autocomplete: "off", onchange: e => { settings.upcApiKey = e.target.value.trim(); saveSettings(); toast("Saved"); } });
+  main.append(el("div", { class: "card", style: "margin-top:12px" }, el("h3", null, "UPC lookup"), el("p", { class: "small" }, "Scanned barcodes are checked against your own stash first. Unknown codes are looked up on UPCitemdb's free tier (about 100 lookups a day, no key needed). Every yarn you save is remembered by UPC, so repeat skeins never need a lookup. Product titles rarely include weight or yardage, so double-check what gets filled in."),
+    field("UPCitemdb API key", keyIn), el("p", { class: "muted small" }, "The key is stored only in this browser and is never included in backups.")));
+  main.append(el("div", { class: "card", style: "margin-top:12px" }, el("h3", null, "Tips"), el("ul", { class: "small", style: "margin:6px 0 0;padding-left:18px" },
+    el("li", null, "On iPhone: open the site in Safari → Share → Add to Home Screen for a full-screen app with the counter."),
+    el("li", null, "Pattern text is parsed into rows when lines start with “Row 1:”, “Rnd 2:”, “Round 3”, or “Rows 4–6:”. Edit the pattern text any time to fix the parse."),
+    el("li", null, "PDF patterns are stored as files and opened in the built-in viewer; keep written instructions in the text box if you want the counter to show each row."),
+    el("li", null, "Keyboard in the counter: Space or → adds a row, ← removes one, Z undoes."))));
+  main.append(el("div", { class: "card", style: "margin-top:12px;border-color:var(--danger)" }, el("h3", { style: "color:var(--danger)" }, "Danger zone"), el("p", { class: "small" }, "Erase everything stored in this browser — projects, patterns, yarn, supplies, and attached files."),
+    el("button", { class: "btn danger", onclick: async () => { if (await confirmDlg("Erase ALL data in this browser? Export a backup first if you want to keep anything.", "Erase everything")) { await idb.clear().catch(() => {}); data = blankData(); lastSerialized = null; localStorage.removeItem(DATA_KEY); markDirty(); go("projects"); toast("All data erased"); } } }, "Erase all data")));
+  main.append(el("p", { class: "muted small", style: "margin-top:16px;text-align:center" }, "Crochet Manager · single-file app · no accounts, no tracking"));
+};
+const importFileIn = el("input", { type: "file", accept: ".json,application/json", style: "display:none", onchange: e => { const f = e.target.files[0]; if (f) importData(f); e.target.value = ""; } });
+async function exportData(withFiles) {
+  flushSave();
+  const out = JSON.parse(JSON.stringify(data)); out.exported = new Date().toISOString();
+  if (withFiles) {
+    try { const all = await idb.all(); out.files = []; for (const r of all) out.files.push({ id: r.id, name: r.name, type: r.type, size: r.size, added: r.added, b64: await blobToB64(r.blob) }); }
+    catch (e) { toast("Could not read attachments; exporting data only"); }
+  }
+  const blob = new Blob([JSON.stringify(out)], { type: "application/json" });
+  const a = el("a", { href: URL.createObjectURL(blob), download: `crochet-backup-${today()}.json` }); document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  toast("Backup exported (" + (blob.size / 1048576).toFixed(1) + " MB)");
+}
+async function importData(file) {
+  let inc; try { inc = JSON.parse(await file.text()); } catch { return toast("That file isn't valid JSON"); }
+  if (!inc || inc.app !== APP_ID) return toast("That file isn't a Crochet Manager backup");
+  const summary = d => `${(d.projects || []).length} projects, ${(d.patterns || []).length} patterns, ${(d.yarns || []).length} yarns, ${(d.supplies || []).length} supplies`;
+  const mode = { v: "merge" };
+  const body = el("div", null, el("p", null, el("b", null, "Backup: "), summary(inc), inc.sync?.modified ? ` — saved ${new Date(inc.sync.modified).toLocaleString()} on ${inc.sync.device || "unknown device"}` : "", inc.files ? `, ${inc.files.length} files` : ""),
+    el("p", null, el("b", null, "This browser: "), summary(data), data.sync.modified ? ` — saved ${new Date(data.sync.modified).toLocaleString()}` : ""),
+    field("How to import", sel(mode, "v", [["merge", "Merge — add items that aren't here yet, update matching ones"], ["replace", "Replace — discard everything here and use the backup"]])));
+  openModal("Import backup", body, [{ label: "Cancel" }, "spacer", { label: "Import", cls: "primary", run: async () => {
+    if (mode.v === "replace") { if (!await confirmDlg("Replace all local data with the backup?", "Replace")) return false; await idb.clear().catch(() => {}); data = Object.assign(blankData(), { projects: inc.projects || [], patterns: inc.patterns || [], yarns: inc.yarns || [], supplies: inc.supplies || [] }); }
+    else for (const k of ["projects", "patterns", "yarns", "supplies"]) for (const it of inc[k] || []) { const i = data[k].findIndex(x => x.id === it.id); if (i >= 0) { if ((it.updated || "") >= (data[k][i].updated || "")) data[k][i] = it; } else data[k].push(it); }
+    let nf = 0; for (const f of inc.files || []) { try { if (!(await idb.get(f.id))) { await idb.put({ id: f.id, name: f.name, type: f.type, size: f.size, added: f.added, blob: b64ToBlob(f.b64, f.type) }); nf++; } } catch {} }
+    lastSerialized = null; markDirty(); flushSave(); go("projects"); toast(`Imported (${nf} files added)`);
+  } }]);
+}
+
+/* ========== boot ========== */
+loadData();
+try { lastSerialized = JSON.stringify({ ...data, sync: undefined }); } catch {}
+(() => { const h = location.hash.replace(/^#/, "").split("/"); if (h[0] && VIEWS[h[0]]) route = { tab: h[0], id: h[1] || null, sub: h[2] || null }; })();
+render();
+if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
+</script>
+</body>
+</html>
