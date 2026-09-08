@@ -24,13 +24,21 @@ On iPhone/iPad: open the page in Safari → Share → **Add to Home Screen** for
 
 ## Lookup proxy (UPCitemdb + Ravelry)
 
-Both UPCitemdb and the Ravelry API refuse calls made directly from a web page, so the repo ships a tiny Cloudflare Worker, `worker/upc-proxy.js` (free tier is plenty):
+UPCitemdb and the Ravelry API both refuse calls made directly from a web page, so the repo ships a small Cloudflare Worker, `worker/upc-proxy.js` (free tier is plenty). Deploy it from Terminal with Wrangler (needs Node: `brew install node`):
 
-1. dash.cloudflare.com → Workers & Pages → Create → Start with Hello World → Edit code → paste the file → Deploy.
-2. For Ravelry: ravelry.com/pro/developer → create an app, type **Basic Auth: read only access**. In the Worker → Settings → Variables and Secrets add secrets `RAVELRY_USER` and `RAVELRY_PASS` (the app's basic-auth pair, not your Ravelry login). Optional: `UPCITEMDB_KEY` for a paid plan.
-3. Paste the worker URL into the app under **Data → Lookup proxy URL** and press **Test connection**.
+```
+cd worker
+npx wrangler login
+npx wrangler kv namespace create TOKENS     # paste the printed id into wrangler.toml
+npx wrangler deploy                         # prints your https://….workers.dev URL
+```
 
-The worker only allows GET requests from the app's origin, only a whitelist of read-only Ravelry paths, and only Ravelry/UPCitemdb image hosts for the photo pass-through. Credentials never reach the browser.
+Ravelry access comes in two layers, both created at ravelry.com/pro/developer:
+
+1. **Catalog search** (patterns, yarns): an app of type *Basic Auth: read only access*. Store its pair as secrets: `npx wrangler secret put RAVELRY_USER` and `npx wrangler secret put RAVELRY_PASS`.
+2. **Your own data** (library, queue, projects, stash): Ravelry only exposes these through OAuth. Create a second app of type *OAuth 2.0* with redirect URI `https://<your worker>.workers.dev/oauth/callback`, then `npx wrangler secret put RAVELRY_CLIENT_ID` and `npx wrangler secret put RAVELRY_CLIENT_SECRET`. In the app: Data → paste the worker URL → **Connect Ravelry** (a one-time approval on ravelry.com). Tokens are kept in the worker's KV store and refreshed automatically; the browser never sees them.
+
+Optional: `npx wrangler secret put UPCITEMDB_KEY` for a paid UPCitemdb plan. The worker only accepts GET requests from the app's origin, a whitelist of read-only Ravelry paths, and Ravelry/UPCitemdb image hosts for the photo pass-through.
 
 ## Development
 

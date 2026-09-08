@@ -796,6 +796,18 @@ VIEWS.data = main => {
     el("div", { class: "flex", style: "flex-wrap:wrap" }, el("button", { class: "btn primary", onclick: () => exportData(withFiles.checked) }, "⬇ Export backup"),
       el("button", { class: "btn", onclick: () => importFileIn.click() }, "⬆ Import backup"), importFileIn)));
   const proxyIn = el("input", { type: "url", value: settings.proxy || "", placeholder: "https://your-worker.workers.dev", autocomplete: "off", onchange: e => { settings.proxy = e.target.value.trim().replace(/\/+$/, ""); saveSettings(); toast("Saved"); } });
+  const oauthBox = el("div", { class: "flex", style: "flex-wrap:wrap;margin:8px 0" }, el("span", { class: "muted small" }, "Checking Ravelry sign-in…"));
+  const drawOAuth = async () => {
+    if (!proxyBase()) { oauthBox.replaceChildren(el("span", { class: "muted small" }, "Enter the worker URL above, then connect Ravelry here.")); return; }
+    const st = await ravOAuthStatus(true);
+    oauthBox.replaceChildren();
+    if (st.connected) oauthBox.append(el("span", { class: "pill active" }, "Ravelry: signed in as " + (st.username || "?")), el("button", { class: "btn small", onclick: async () => { await fetch(proxyBase() + "/oauth/logout").catch(() => {}); ravStatus = null; drawOAuth(); } }, "Disconnect"));
+    else if (st.oauthConfigured === false) oauthBox.append(el("span", { class: "muted small" }, "Worker has no OAuth app yet — add RAVELRY_CLIENT_ID / RAVELRY_CLIENT_SECRET secrets (see README)."));
+    else if (st.error) oauthBox.append(el("span", { class: "muted small" }, "Worker: " + st.error));
+    else oauthBox.append(el("button", { class: "btn primary", onclick: () => { flushSave(); location.href = proxyBase() + "/oauth/start"; } }, "Connect Ravelry"), el("span", { class: "muted small" }, "Opens Ravelry once to approve read access to your library, queue, projects and stash."));
+  };
+  drawOAuth();
+  if (route.id && /^ravelry=/.test(route.id)) { const m = route.id.slice(8); toast(m === "connected" ? "Ravelry connected" : "Ravelry sign-in failed: " + m.replace(/^error:/, ""), 5000); route.id = null; try { history.replaceState(null, "", "#data"); } catch {} }
   const ravUserIn = el("input", { type: "text", value: settings.ravelryUser || "", placeholder: "your Ravelry username", autocomplete: "off", autocapitalize: "off", onchange: e => { settings.ravelryUser = e.target.value.trim(); saveSettings(); toast("Saved"); } });
   const testOut = el("div", { class: "muted small", style: "margin-top:6px" });
   const testBtn = el("button", { class: "btn small", onclick: async () => {
@@ -803,12 +815,12 @@ VIEWS.data = main => {
     testOut.textContent = "Testing…"; const res = [];
     try { const r = await fetch(proxyBase() + "/?upc=0023032005218"); res.push("UPC proxy: " + (r.ok ? "OK" : "HTTP " + r.status)); } catch (e) { res.push("UPC proxy: failed (" + e.message + ")"); }
     try { const j = await rav("patterns/search.json", { query: "hat", craft: "crochet", page_size: 1 }); res.push("Ravelry search: " + (j.patterns ? "OK" : "unexpected response")); } catch (e) { res.push("Ravelry search: " + e.message); }
-    try { const u = await ravUsername(); const j = await rav("people/" + u + ".json"); res.push("Ravelry user: " + (j.user?.username || u) + (j.user?.pattern_count != null ? "" : "")); } catch (e) { res.push("Ravelry user: " + e.message); }
+    try { const st = await ravOAuthStatus(true); if (st.connected) { const j = await rav("current_user.json"); res.push("Ravelry sign-in: OK (" + (j.user?.username || st.username) + ")"); } else res.push("Ravelry sign-in: not connected" + (settings.ravelryUser ? " (using username " + settings.ravelryUser + ", public data only)" : "")); } catch (e) { res.push("Ravelry sign-in: " + e.message); }
     testOut.textContent = res.join(" · ");
   } }, "Test connection");
   main.append(el("div", { class: "card", style: "margin-top:12px" }, el("h3", null, "Lookup proxy, UPC & Ravelry"), el("p", { class: "small" }, "Scanned barcodes are checked against your own stash first, then Open Products Facts / Open Food Facts (free, no key). Every yarn you save is remembered by UPC, so repeat skeins never need a lookup."),
-    el("p", { class: "small" }, "The repo includes a small Cloudflare Worker (worker/upc-proxy.js, free tier). Deploy it once and it unlocks two things: UPCitemdb lookups (the API blocks direct browser calls) and Ravelry — pattern search & import, yarn search, and one-tap import of your Ravelry library, queue, projects and stash. Your Ravelry API credentials live only in the worker's secrets, never in this page."),
-    field("Lookup proxy URL", proxyIn), field("Ravelry username (for library, queue, projects, stash imports)", ravUserIn), el("div", { class: "flex" }, testBtn), testOut, el("p", { class: "muted small", style: "margin-top:6px" }, "Stored only in this browser; never included in backups.")));
+    el("p", { class: "small" }, "The repo includes a small Cloudflare Worker (worker/upc-proxy.js, free tier). Deploy it once and it unlocks UPCitemdb lookups (the API blocks direct browser calls) and Ravelry: pattern & yarn search use a read-only API app; importing your own library, queue, projects and stash needs a one-time Ravelry sign-in (OAuth). Credentials and tokens live only in the worker, never in this page."),
+    field("Lookup proxy URL", proxyIn), oauthBox, el("details", null, el("summary", { class: "muted small" }, "Without OAuth: Ravelry username (public data only)"), field("Ravelry username", ravUserIn)), el("div", { class: "flex", style: "margin-top:8px" }, testBtn), testOut, el("p", { class: "muted small", style: "margin-top:6px" }, "Stored only in this browser; never included in backups.")));
   main.append(el("div", { class: "card", style: "margin-top:12px" }, el("h3", null, "Tips"), el("ul", { class: "small", style: "margin:6px 0 0;padding-left:18px" },
     el("li", null, "On iPhone: open the site in Safari → Share → Add to Home Screen for a full-screen app with the counter."),
     el("li", null, "Pattern text is parsed into rows when lines start with “Row 1:”, “Rnd 2:”, “Round 3”, or “Rows 4–6:”. Edit the pattern text any time to fix the parse."),
@@ -866,8 +878,14 @@ async function rav(path, params = {}) {
 const ravImg = url => url ? proxyBase() + "/img?url=" + encodeURIComponent(url) : null;
 async function ravFetchImage(url, name = "ravelry.jpg") { if (!url) return null; try { const b = await (await fetch(ravImg(url))).blob(); if (!b.type.startsWith("image/")) return null; return await storeFile(new File([b], name, { type: b.type })); } catch { return null; }
 }
-// Read-only Ravelry apps cannot call current_user.json, so the username comes from settings.
-async function ravUsername() { const u = (settings.ravelryUser || "").trim(); if (!u) throw new Error("Enter your Ravelry username under Data → Ravelry username"); return u; }
+let ravStatus = null;
+async function ravOAuthStatus(force) { if (ravStatus && !force) return ravStatus; try { const r = await fetch(proxyBase() + "/oauth/status"); ravStatus = await r.json(); } catch { ravStatus = { connected: false }; } return ravStatus; }
+// Personal endpoints need an OAuth sign-in (read-only apps can't even call current_user.json).
+async function ravUsername() {
+  const st = await ravOAuthStatus(); if (st.connected && st.username) return st.username;
+  const u = (settings.ravelryUser || "").trim(); if (u) return u;
+  throw new Error("Sign in first: Data → Connect Ravelry");
+}
 function ravWeightToApp(name) { name = String(name || "").toLowerCase(); if (!name) return ""; const m = { lace: 0, thread: 0, cobweb: 0, "light fingering": 1, fingering: 1, sock: 1, sport: 2, dk: 3, worsted: 4, aran: 4, bulky: 5, "super bulky": 6, jumbo: 7 }; const k = Object.keys(m).sort((a, b) => b.length - a.length).find(k => name.includes(k)); return k != null ? YARN_WEIGHTS[m[k]] : ""; }
 function ravHook(p) { const hs = (p.pattern_needle_sizes || []).filter(n => n.hook || /hook/i.test(n.name || "")); const s = hs[0] || p.pattern_needle_sizes?.[0]; if (!s) return ""; const mm = s.metric ? String(Number(s.metric).toFixed(2)).replace(/(\.\d)0$/, "$1") + " mm" : ""; const us = (s.us || s.name || "").replace(/^.*?(\b[A-Z]-?\d+\b).*$/, "$1"); return HOOK_SIZES.find(h => mm && h.startsWith(mm)) || [mm, us && "(" + us + ")"].filter(Boolean).join(" ") || s.name || ""; }
 const stripHtml = h => { const d = document.createElement("div"); d.innerHTML = h || ""; return d.textContent.replace(/\n{3,}/g, "\n\n").trim(); };

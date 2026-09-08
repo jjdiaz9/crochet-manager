@@ -1,10 +1,18 @@
 # Deploy from Terminal with Wrangler (no dashboard editing needed):
 #   cd worker
-#   npx wrangler login          # opens the browser once to authorize
-#   npx wrangler deploy         # prints the https://….workers.dev URL
-#   npx wrangler secret put RAVELRY_USER
+#   npx wrangler login                        # opens the browser once to authorize
+#   npx wrangler kv namespace create TOKENS   # prints an id — paste it below
+#   npx wrangler deploy                       # prints the https://….workers.dev URL
+#   npx wrangler secret put RAVELRY_USER            (read-only app, for catalog search)
 #   npx wrangler secret put RAVELRY_PASS
+#   npx wrangler secret put RAVELRY_CLIENT_ID       (OAuth 2.0 app, for your own data)
+#   npx wrangler secret put RAVELRY_CLIENT_SECRET
 name = "crochet-manager-proxy"
 main = "upc-proxy.js"
 compatibility_date = "2025-06-01"
 workers_dev = true
+
+# Stores your Ravelry OAuth tokens (never sent to the browser).
+[[kv_namespaces]]
+binding = "TOKENS"
+id = "82470ba0b3b443e6a98a912741ae1174"
