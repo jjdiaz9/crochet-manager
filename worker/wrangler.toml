@@ -1,0 +1,10 @@
+# Deploy from Terminal with Wrangler (no dashboard editing needed):
+#   cd worker
+#   npx wrangler login          # opens the browser once to authorize
+#   npx wrangler deploy         # prints the https://….workers.dev URL
+#   npx wrangler secret put RAVELRY_USER
+#   npx wrangler secret put RAVELRY_PASS
+name = "crochet-manager-proxy"
+main = "upc-proxy.js"
+compatibility_date = "2025-06-01"
+workers_dev = true

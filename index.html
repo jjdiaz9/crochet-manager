@@ -795,18 +795,20 @@ VIEWS.data = main => {
     el("label", { class: "flex small", style: "margin:10px 0" }, withFiles, "Include PDFs and photos (bigger file)"),
     el("div", { class: "flex", style: "flex-wrap:wrap" }, el("button", { class: "btn primary", onclick: () => exportData(withFiles.checked) }, "⬇ Export backup"),
       el("button", { class: "btn", onclick: () => importFileIn.click() }, "⬆ Import backup"), importFileIn)));
-  const proxyIn = el("input", { type: "url", value: settings.proxy || "", placeholder: "https://your-worker.workers.dev", autocomplete: "off", onchange: e => { settings.proxy = e.target.value.trim().replace(/\/+$/, ""); ravUser = null; saveSettings(); toast("Saved"); } });
+  const proxyIn = el("input", { type: "url", value: settings.proxy || "", placeholder: "https://your-worker.workers.dev", autocomplete: "off", onchange: e => { settings.proxy = e.target.value.trim().replace(/\/+$/, ""); saveSettings(); toast("Saved"); } });
+  const ravUserIn = el("input", { type: "text", value: settings.ravelryUser || "", placeholder: "your Ravelry username", autocomplete: "off", autocapitalize: "off", onchange: e => { settings.ravelryUser = e.target.value.trim(); saveSettings(); toast("Saved"); } });
   const testOut = el("div", { class: "muted small", style: "margin-top:6px" });
   const testBtn = el("button", { class: "btn small", onclick: async () => {
     flushSave(); if (!proxyBase()) return testOut.textContent = "Enter the worker URL first.";
     testOut.textContent = "Testing…"; const res = [];
     try { const r = await fetch(proxyBase() + "/?upc=0023032005218"); res.push("UPC proxy: " + (r.ok ? "OK" : "HTTP " + r.status)); } catch (e) { res.push("UPC proxy: failed (" + e.message + ")"); }
-    try { ravUser = null; res.push("Ravelry: connected as " + await ravUsername()); } catch (e) { res.push("Ravelry: " + e.message); }
+    try { const j = await rav("patterns/search.json", { query: "hat", craft: "crochet", page_size: 1 }); res.push("Ravelry search: " + (j.patterns ? "OK" : "unexpected response")); } catch (e) { res.push("Ravelry search: " + e.message); }
+    try { const u = await ravUsername(); const j = await rav("people/" + u + ".json"); res.push("Ravelry user: " + (j.user?.username || u) + (j.user?.pattern_count != null ? "" : "")); } catch (e) { res.push("Ravelry user: " + e.message); }
     testOut.textContent = res.join(" · ");
   } }, "Test connection");
   main.append(el("div", { class: "card", style: "margin-top:12px" }, el("h3", null, "Lookup proxy, UPC & Ravelry"), el("p", { class: "small" }, "Scanned barcodes are checked against your own stash first, then Open Products Facts / Open Food Facts (free, no key). Every yarn you save is remembered by UPC, so repeat skeins never need a lookup."),
     el("p", { class: "small" }, "The repo includes a small Cloudflare Worker (worker/upc-proxy.js, free tier). Deploy it once and it unlocks two things: UPCitemdb lookups (the API blocks direct browser calls) and Ravelry — pattern search & import, yarn search, and one-tap import of your Ravelry library, queue, projects and stash. Your Ravelry API credentials live only in the worker's secrets, never in this page."),
-    field("Lookup proxy URL", proxyIn), el("div", { class: "flex" }, testBtn), testOut, el("p", { class: "muted small", style: "margin-top:6px" }, "Stored only in this browser; never included in backups.")));
+    field("Lookup proxy URL", proxyIn), field("Ravelry username (for library, queue, projects, stash imports)", ravUserIn), el("div", { class: "flex" }, testBtn), testOut, el("p", { class: "muted small", style: "margin-top:6px" }, "Stored only in this browser; never included in backups.")));
   main.append(el("div", { class: "card", style: "margin-top:12px" }, el("h3", null, "Tips"), el("ul", { class: "small", style: "margin:6px 0 0;padding-left:18px" },
     el("li", null, "On iPhone: open the site in Safari → Share → Add to Home Screen for a full-screen app with the counter."),
     el("li", null, "Pattern text is parsed into rows when lines start with “Row 1:”, “Rnd 2:”, “Round 3”, or “Rows 4–6:”. Edit the pattern text any time to fix the parse."),
@@ -864,8 +866,8 @@ async function rav(path, params = {}) {
 const ravImg = url => url ? proxyBase() + "/img?url=" + encodeURIComponent(url) : null;
 async function ravFetchImage(url, name = "ravelry.jpg") { if (!url) return null; try { const b = await (await fetch(ravImg(url))).blob(); if (!b.type.startsWith("image/")) return null; return await storeFile(new File([b], name, { type: b.type })); } catch { return null; }
 }
-let ravUser = null;
-async function ravUsername() { if (ravUser) return ravUser; const j = await rav("current_user.json"); ravUser = j.user?.username; if (!ravUser) throw new Error("Could not read your Ravelry username"); return ravUser; }
+// Read-only Ravelry apps cannot call current_user.json, so the username comes from settings.
+async function ravUsername() { const u = (settings.ravelryUser || "").trim(); if (!u) throw new Error("Enter your Ravelry username under Data → Ravelry username"); return u; }
 function ravWeightToApp(name) { name = String(name || "").toLowerCase(); if (!name) return ""; const m = { lace: 0, thread: 0, cobweb: 0, "light fingering": 1, fingering: 1, sock: 1, sport: 2, dk: 3, worsted: 4, aran: 4, bulky: 5, "super bulky": 6, jumbo: 7 }; const k = Object.keys(m).sort((a, b) => b.length - a.length).find(k => name.includes(k)); return k != null ? YARN_WEIGHTS[m[k]] : ""; }
 function ravHook(p) { const hs = (p.pattern_needle_sizes || []).filter(n => n.hook || /hook/i.test(n.name || "")); const s = hs[0] || p.pattern_needle_sizes?.[0]; if (!s) return ""; const mm = s.metric ? String(Number(s.metric).toFixed(2)).replace(/(\.\d)0$/, "$1") + " mm" : ""; const us = (s.us || s.name || "").replace(/^.*?(\b[A-Z]-?\d+\b).*$/, "$1"); return HOOK_SIZES.find(h => mm && h.startsWith(mm)) || [mm, us && "(" + us + ")"].filter(Boolean).join(" ") || s.name || ""; }
 const stripHtml = h => { const d = document.createElement("div"); d.innerHTML = h || ""; return d.textContent.replace(/\n{3,}/g, "\n\n").trim(); };

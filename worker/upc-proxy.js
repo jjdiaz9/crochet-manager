@@ -15,7 +15,7 @@
 // Finally paste the worker URL (https://….workers.dev) into Crochet Manager → Data.
 
 const ALLOWED_ORIGINS = ["https://jjdiaz9.github.io", "http://localhost:8000", "http://127.0.0.1:8000", "null"]; // "null" = file:// pages
-const RAVELRY_ALLOWED = /^(current_user\.json|patterns\/search\.json|patterns\/\d+\.json|patterns\.json|pattern_categories\/list\.json|yarns\/search\.json|yarns\/\d+\.json|yarns\.json|yarn_companies\/search\.json|people\/[\w-]+\/(library|queue|projects|stash|favorites)\/(list|search)\.json|people\/[\w-]+\/(projects|stash)\/\d+\.json|people\/[\w-]+\.json)$/;
+const RAVELRY_ALLOWED = /^(patterns\/search\.json|patterns\/\d+\.json|patterns\.json|pattern_categories\/list\.json|yarns\/search\.json|yarns\/\d+\.json|yarns\.json|yarn_companies\/search\.json|people\/[\w-]+\/(library|queue|projects|stash|favorites)\/(list|search)\.json|people\/[\w-]+\/(projects|stash)\/\d+\.json|people\/[\w-]+\.json)$/;
 const IMG_HOSTS = /(^|\.)(ravelrycache\.com|ravelry\.com|upcitemdb\.com)$/;
 
 export default {
