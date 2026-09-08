@@ -342,6 +342,7 @@ VIEWS.patterns = main => {
   const list = data.patterns.filter(p => !q || [p.name, p.designer, p.tags, p.notes].join(" ").toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
   main.append(el("div", { class: "toolbar" }, el("h2", null, "Patterns"),
     el("input", { type: "search", placeholder: "Search patterns…", value: settings.q_patterns || "", oninput: e => { settings.q_patterns = e.target.value; saveSettings(); render(); } }),
+    el("button", { class: "btn", onclick: () => ravSearchDlg("patterns") }, "Ravelry"),
     el("button", { class: "btn primary", onclick: () => importPatternDlg() }, "+ Import / New")));
   if (!data.patterns.length) main.append(el("div", { class: "empty" }, el("b", null, "No patterns yet"), "Import a PDF, paste written instructions, add photos, or save a link."));
   else if (!list.length) main.append(el("div", { class: "empty" }, "Nothing matches your search."));
@@ -599,6 +600,7 @@ VIEWS.yarns = main => {
   main.append(el("div", { class: "toolbar" }, el("h2", null, "Yarn stash"),
     el("input", { type: "search", placeholder: "Search brand, color, weight, UPC…", value: settings.q_yarns || "", oninput: e => { settings.q_yarns = e.target.value; saveSettings(); render(); } }),
     el("button", { class: "btn", onclick: () => scanDlg() }, "▦ Scan UPC"),
+    el("button", { class: "btn", onclick: () => ravSearchDlg("yarns") }, "Ravelry"),
     el("button", { class: "btn primary", onclick: () => yarnDlg(newYarn()) }, "+ Add")));
   const skeins = data.yarns.reduce((s, y) => s + (+y.qty || 0), 0), yards = data.yarns.reduce((s, y) => s + (+y.qty || 0) * (+y.yards || 0), 0);
   if (data.yarns.length) main.append(el("div", { class: "stat" }, el("div", { class: "card" }, el("b", null, data.yarns.length), el("span", { class: "muted small" }, "yarns")), el("div", { class: "card" }, el("b", null, skeins), el("span", { class: "muted small" }, "skeins")), el("div", { class: "card" }, el("b", null, yards.toLocaleString()), el("span", { class: "muted small" }, "yards"))));
@@ -704,7 +706,7 @@ async function lookupUPC(y, code, fill) {
     } catch (e) { console.warn(host, e); }
   }
   // 2) UPCitemdb through your own lookup proxy (see Data → UPC lookup); the API blocks direct browser calls
-  const proxy = (settings.upcProxy || "").trim();
+  const proxy = proxyBase();
   if (proxy) {
     try {
       const r = await fetch(proxy + (proxy.includes("?") ? "&" : "?") + "upc=" + encodeURIComponent(code));
@@ -793,10 +795,18 @@ VIEWS.data = main => {
     el("label", { class: "flex small", style: "margin:10px 0" }, withFiles, "Include PDFs and photos (bigger file)"),
     el("div", { class: "flex", style: "flex-wrap:wrap" }, el("button", { class: "btn primary", onclick: () => exportData(withFiles.checked) }, "⬇ Export backup"),
       el("button", { class: "btn", onclick: () => importFileIn.click() }, "⬆ Import backup"), importFileIn)));
-  const proxyIn = el("input", { type: "url", value: settings.upcProxy || "", placeholder: "https://your-worker.workers.dev/", autocomplete: "off", onchange: e => { settings.upcProxy = e.target.value.trim(); saveSettings(); toast("Saved"); } });
-  main.append(el("div", { class: "card", style: "margin-top:12px" }, el("h3", null, "UPC lookup"), el("p", { class: "small" }, "Scanned barcodes are checked against your own stash first, then Open Products Facts / Open Food Facts (free, no key). Every yarn you save is remembered by UPC, so repeat skeins never need a lookup."),
-    el("p", { class: "small" }, "For wider coverage, UPCitemdb has a free tier (~100 lookups/day) but blocks calls straight from a web page. The repo includes a tiny Cloudflare Worker (worker/upc-proxy.js) you can deploy for free; paste its URL here."),
-    field("Lookup proxy URL", proxyIn), el("p", { class: "muted small" }, "Stored only in this browser; never included in backups. Product titles rarely include weight or yardage, so double-check what gets filled in.")));
+  const proxyIn = el("input", { type: "url", value: settings.proxy || "", placeholder: "https://your-worker.workers.dev", autocomplete: "off", onchange: e => { settings.proxy = e.target.value.trim().replace(/\/+$/, ""); ravUser = null; saveSettings(); toast("Saved"); } });
+  const testOut = el("div", { class: "muted small", style: "margin-top:6px" });
+  const testBtn = el("button", { class: "btn small", onclick: async () => {
+    flushSave(); if (!proxyBase()) return testOut.textContent = "Enter the worker URL first.";
+    testOut.textContent = "Testing…"; const res = [];
+    try { const r = await fetch(proxyBase() + "/?upc=0023032005218"); res.push("UPC proxy: " + (r.ok ? "OK" : "HTTP " + r.status)); } catch (e) { res.push("UPC proxy: failed (" + e.message + ")"); }
+    try { ravUser = null; res.push("Ravelry: connected as " + await ravUsername()); } catch (e) { res.push("Ravelry: " + e.message); }
+    testOut.textContent = res.join(" · ");
+  } }, "Test connection");
+  main.append(el("div", { class: "card", style: "margin-top:12px" }, el("h3", null, "Lookup proxy, UPC & Ravelry"), el("p", { class: "small" }, "Scanned barcodes are checked against your own stash first, then Open Products Facts / Open Food Facts (free, no key). Every yarn you save is remembered by UPC, so repeat skeins never need a lookup."),
+    el("p", { class: "small" }, "The repo includes a small Cloudflare Worker (worker/upc-proxy.js, free tier). Deploy it once and it unlocks two things: UPCitemdb lookups (the API blocks direct browser calls) and Ravelry — pattern search & import, yarn search, and one-tap import of your Ravelry library, queue, projects and stash. Your Ravelry API credentials live only in the worker's secrets, never in this page."),
+    field("Lookup proxy URL", proxyIn), el("div", { class: "flex" }, testBtn), testOut, el("p", { class: "muted small", style: "margin-top:6px" }, "Stored only in this browser; never included in backups.")));
   main.append(el("div", { class: "card", style: "margin-top:12px" }, el("h3", null, "Tips"), el("ul", { class: "small", style: "margin:6px 0 0;padding-left:18px" },
     el("li", null, "On iPhone: open the site in Safari → Share → Add to Home Screen for a full-screen app with the counter."),
     el("li", null, "Pattern text is parsed into rows when lines start with “Row 1:”, “Rnd 2:”, “Round 3”, or “Rows 4–6:”. Edit the pattern text any time to fix the parse."),
@@ -836,10 +846,161 @@ async function importData(file) {
 
 /* ========== boot ========== */
 loadData();
+if (settings.upcProxy && !settings.proxy) { settings.proxy = settings.upcProxy.replace(/\/+$/, ""); delete settings.upcProxy; saveSettings(); }
 try { lastSerialized = JSON.stringify({ ...data, sync: undefined }); } catch {}
 (() => { const h = location.hash.replace(/^#/, "").split("/"); if (h[0] && VIEWS[h[0]]) route = { tab: h[0], id: h[1] || null, sub: h[2] || null }; })();
 render();
 if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
+/* ========== Ravelry (via the lookup proxy worker, which holds the API credentials) ========== */
+const proxyBase = () => (settings.proxy || "").trim().replace(/\/+$/, "");
+async function rav(path, params = {}) {
+  const base = proxyBase(); if (!base) throw new Error("Set the lookup proxy URL under Data first");
+  const qs = Object.entries(params).filter(([, v]) => v !== "" && v != null).map(([k, v]) => encodeURIComponent(k) + "=" + encodeURIComponent(v)).join("&");
+  const r = await fetch(base + "/ravelry/" + path.replace(/^\/+/, "") + (qs ? "?" + qs : ""));
+  const txt = await r.text(); let j; try { j = JSON.parse(txt); } catch { j = { error: txt.slice(0, 200) }; }
+  if (!r.ok) throw new Error(j.error || j.message || ("Ravelry HTTP " + r.status));
+  return j;
+}
+const ravImg = url => url ? proxyBase() + "/img?url=" + encodeURIComponent(url) : null;
+async function ravFetchImage(url, name = "ravelry.jpg") { if (!url) return null; try { const b = await (await fetch(ravImg(url))).blob(); if (!b.type.startsWith("image/")) return null; return await storeFile(new File([b], name, { type: b.type })); } catch { return null; }
+}
+let ravUser = null;
+async function ravUsername() { if (ravUser) return ravUser; const j = await rav("current_user.json"); ravUser = j.user?.username; if (!ravUser) throw new Error("Could not read your Ravelry username"); return ravUser; }
+function ravWeightToApp(name) { name = String(name || "").toLowerCase(); if (!name) return ""; const m = { lace: 0, thread: 0, cobweb: 0, "light fingering": 1, fingering: 1, sock: 1, sport: 2, dk: 3, worsted: 4, aran: 4, bulky: 5, "super bulky": 6, jumbo: 7 }; const k = Object.keys(m).sort((a, b) => b.length - a.length).find(k => name.includes(k)); return k != null ? YARN_WEIGHTS[m[k]] : ""; }
+function ravHook(p) { const hs = (p.pattern_needle_sizes || []).filter(n => n.hook || /hook/i.test(n.name || "")); const s = hs[0] || p.pattern_needle_sizes?.[0]; if (!s) return ""; const mm = s.metric ? String(Number(s.metric).toFixed(2)).replace(/(\.\d)0$/, "$1") + " mm" : ""; const us = (s.us || s.name || "").replace(/^.*?(\b[A-Z]-?\d+\b).*$/, "$1"); return HOOK_SIZES.find(h => mm && h.startsWith(mm)) || [mm, us && "(" + us + ")"].filter(Boolean).join(" ") || s.name || ""; }
+const stripHtml = h => { const d = document.createElement("div"); d.innerHTML = h || ""; return d.textContent.replace(/\n{3,}/g, "\n\n").trim(); };
+
+function ravPatternToApp(p) {
+  const pat = newPattern();
+  pat.name = p.name || "Ravelry pattern"; pat.designer = p.designer?.name || p.pattern_author?.name || "";
+  pat.url = p.permalink ? "https://www.ravelry.com/patterns/library/" + p.permalink : ""; pat.ravelryId = p.id;
+  pat.hook = ravHook(p); pat.weight = ravWeightToApp(p.yarn_weight?.name || p.yarn_weight_description);
+  pat.tags = [...new Set([...(p.pattern_categories || []).map(c => c.name), ...(p.pattern_attributes || []).map(a => a.permalink)].filter(Boolean))].slice(0, 8).join(", ");
+  const facts = [];
+  if (p.yardage) facts.push("Yardage: " + p.yardage + (p.yardage_max && p.yardage_max !== p.yardage ? "–" + p.yardage_max : "") + " yd");
+  if (p.gauge_description) facts.push("Gauge: " + p.gauge_description);
+  if (p.sizes_available) facts.push("Sizes: " + p.sizes_available);
+  if (p.packs?.length) facts.push("Yarn: " + p.packs.map(k => [k.yarn_name || k.yarn?.name, k.colorway].filter(Boolean).join(" – ")).filter(Boolean).join("; "));
+  if (p.download_location?.url) facts.push((p.free ? "Free download: " : "Download (purchased/paid): ") + p.download_location.url);
+  else if (p.url) facts.push("Source: " + p.url);
+  if (p.price && !p.free) facts.push("Price: " + p.price + " " + (p.currency || ""));
+  pat.notes = [facts.join("\n"), p.notes_html ? stripHtml(p.notes_html) : (p.notes || "")].filter(Boolean).join("\n\n");
+  pat.text = ""; pat.rows = [];
+  return pat;
+}
+function ravYarnToApp(yn) {
+  const y = newYarn();
+  y.brand = yn.yarn_company_name || yn.yarn_company?.name || ""; y.name = yn.name || ""; y.ravelryId = yn.id;
+  y.weight = ravWeightToApp(yn.yarn_weight?.name); y.yards = yn.yardage || ""; y.grams = yn.grams || "";
+  y.fiber = (yn.yarn_fibers || []).map(f => (f.percentage ? f.percentage + "% " : "") + (f.fiber_type?.name || "")).join(", ");
+  if (yn.min_hook_size || yn.max_hook_size) y.hook = [yn.min_hook_size, yn.max_hook_size].filter(Boolean).map(v => v + " mm").join(" – ");
+  const bits = []; if (yn.texture) bits.push(yn.texture); if (yn.discontinued) bits.push("discontinued"); if (yn.machine_washable) bits.push("machine washable"); if (yn.permalink) bits.push("https://www.ravelry.com/yarns/library/" + yn.permalink);
+  y.notes = bits.join(" · "); y.qty = 0;
+  return y;
+}
+
+function ravResultsList(container, items, renderRow) { container.replaceChildren(); if (!items.length) container.append(el("div", { class: "muted", style: "padding:12px" }, "No results.")); for (const it of items) container.append(renderRow(it)); }
+function ravSearchDlg(kind) {
+  if (!proxyBase()) return openModal("Ravelry not connected", el("p", null, "Ravelry works through your lookup proxy worker, which holds your API credentials. Deploy worker/upc-proxy.js from the repo, add the RAVELRY_USER / RAVELRY_PASS secrets, and paste the worker URL under Data → Lookup proxy URL."), [{ label: "Open Data tab", cls: "primary", run: () => go("data") }, { label: "Close" }]);
+  const q = el("input", { type: "search", placeholder: kind === "patterns" ? "Search Ravelry crochet patterns…" : "Search Ravelry yarns (brand or name)…" });
+  const opts = kind === "patterns" ? el("select", { style: "width:auto" }, el("option", { value: "" }, "All"), el("option", { value: "free" }, "Free only"), el("option", { value: "ravelry" }, "Ravelry downloads")) : null;
+  const list = el("div", { class: "rowlist", style: "margin-top:8px;max-height:55vh" });
+  const status = el("div", { class: "muted small", style: "margin-top:6px" });
+  let page = 1;
+  const search = async (p = 1) => {
+    page = p; status.textContent = "Searching…"; list.replaceChildren();
+    try {
+      if (kind === "patterns") {
+        const j = await rav("patterns/search.json", { query: q.value, craft: "crochet", page_size: 25, page, availability: opts.value, sort: q.value ? "best" : "popularity" });
+        ravResultsList(list, j.patterns || [], p => el("div", { style: "align-items:center", onclick: () => ravImportPattern(p.id, m) },
+          p.first_photo?.small_url ? el("img", { src: ravImg(p.first_photo.small_url), style: "width:52px;height:52px;object-fit:cover;border-radius:8px;flex:none", alt: "" }) : el("span", { style: "width:52px;flex:none;text-align:center;font-size:1.6rem" }, "🧶"),
+          el("span", { style: "flex:1;min-width:0" }, el("b", { style: "display:block;min-width:0" }, p.name), el("span", { class: "muted small" }, [p.designer?.name, p.free ? "free" : null, p.pattern_sources?.[0]?.name].filter(Boolean).join(" · "))),
+          el("span", { class: "pill" }, "Import")));
+        status.textContent = (j.paginator ? `${j.paginator.results || ""} results · page ${j.paginator.page}/${j.paginator.last_page}` : "") + " — tap a pattern to import it.";
+        pager(j.paginator);
+      } else {
+        const j = await rav("yarns/search.json", { query: q.value, page_size: 25, page, sort: "best" });
+        ravResultsList(list, j.yarns || [], yn => el("div", { style: "align-items:center", onclick: () => ravImportYarn(yn.id, m) },
+          yn.first_photo?.small_url ? el("img", { src: ravImg(yn.first_photo.small_url), style: "width:52px;height:52px;object-fit:cover;border-radius:8px;flex:none", alt: "" }) : el("span", { style: "width:52px;flex:none;text-align:center;font-size:1.6rem" }, "🧶"),
+          el("span", { style: "flex:1;min-width:0" }, el("b", { style: "display:block" }, [yn.yarn_company_name, yn.name].filter(Boolean).join(" ")), el("span", { class: "muted small" }, [yn.yarn_weight?.name, yn.yardage && yn.yardage + " yd", yn.grams && yn.grams + " g", yn.discontinued ? "discontinued" : null].filter(Boolean).join(" · "))),
+          el("span", { class: "pill" }, "Add")));
+        status.textContent = (j.paginator ? `${j.paginator.results || ""} results · page ${j.paginator.page}/${j.paginator.last_page}` : "") + " — tap a yarn to add it to your stash.";
+        pager(j.paginator);
+      }
+    } catch (e) { status.textContent = "Ravelry error: " + e.message; }
+  };
+  const pagerEl = el("div", { class: "flex", style: "justify-content:center;margin-top:8px" });
+  const pager = pg => { pagerEl.replaceChildren(); if (!pg || pg.last_page <= 1) return; pagerEl.append(el("button", { class: "btn small", disabled: page <= 1, onclick: () => search(page - 1) }, "‹ Prev"), el("span", { class: "muted small" }, page + " / " + pg.last_page), el("button", { class: "btn small", disabled: page >= pg.last_page, onclick: () => search(page + 1) }, "Next ›")); };
+  q.addEventListener("keydown", e => { if (e.key === "Enter") search(1); });
+  const mine = kind === "patterns"
+    ? el("div", { class: "flex", style: "flex-wrap:wrap;margin-bottom:8px" }, el("button", { class: "btn small", onclick: () => ravImportLibrary(m) }, "⬇ Import my library"), el("button", { class: "btn small", onclick: () => ravImportQueue(m) }, "⬇ Import my queue"), el("button", { class: "btn small", onclick: () => ravImportProjects(m) }, "⬇ Import my projects"))
+    : el("div", { class: "flex", style: "flex-wrap:wrap;margin-bottom:8px" }, el("button", { class: "btn small", onclick: () => ravImportStash(m) }, "⬇ Import my stash"));
+  const m = openModal("Ravelry", el("div", null, mine, el("div", { class: "flex" }, q, opts, el("button", { class: "btn small primary", onclick: () => search(1) }, "Search")), status, list, pagerEl), [{ label: "Close" }]);
+}
+
+async function ravImportPattern(id, modal, { silent = false } = {}) {
+  const existing = data.patterns.find(p => p.ravelryId === id);
+  if (existing) { if (!silent) { toast("Already imported"); modal?.close(); go("patterns", existing.id); } return existing; }
+  if (!silent) toast("Importing pattern…");
+  try {
+    const j = await rav("patterns/" + id + ".json"); const p = j.pattern; if (!p) throw new Error("No pattern in response");
+    const pat = ravPatternToApp(p);
+    const photo = p.photos?.[0]?.medium_url || p.first_photo?.medium_url; const att = await ravFetchImage(photo, (pat.name || "pattern") + ".jpg"); if (att) pat.attachments.push(att);
+    data.patterns.push(pat); markDirty();
+    if (!silent) { modal?.close(); toast("Imported " + pat.name); go("patterns", pat.id); }
+    return pat;
+  } catch (e) { if (!silent) toast("Import failed: " + e.message, 4000); throw e; }
+}
+async function ravImportYarn(id, modal, { silent = false, extra = {} } = {}) {
+  try {
+    const j = await rav("yarns/" + id + ".json"); const yn = j.yarn; if (!yn) throw new Error("No yarn in response");
+    const y = Object.assign(ravYarnToApp(yn), extra);
+    const att = await ravFetchImage(yn.photos?.[0]?.medium_url || yn.first_photo?.medium_url, "yarn.jpg"); if (att) y.image = att.id;
+    data.yarns.push(y); markDirty();
+    if (!silent) { modal?.close(); go("yarns", y.id); yarnDlg(y); toast("Added — set skeins and colorway"); }
+    return y;
+  } catch (e) { if (!silent) toast("Import failed: " + e.message, 4000); throw e; }
+}
+async function ravBulk(modal, label, fetchList, importOne) {
+  const st = el("div", { class: "muted small" }, "Loading " + label + "…");
+  const m2 = openModal("Import " + label, st, [{ label: "Close" }]);
+  try {
+    const items = await fetchList(); let n = 0, skipped = 0, failed = 0;
+    for (const it of items) { st.textContent = `${label}: ${n + skipped + failed + 1} / ${items.length}…`; try { const r = await importOne(it); if (r === "skip") skipped++; else n++; } catch (e) { console.warn(e); failed++; } }
+    flushSave(); st.textContent = `Done — ${n} imported, ${skipped} already here${failed ? ", " + failed + " failed" : ""}.`; render();
+  } catch (e) { st.textContent = "Ravelry error: " + e.message; }
+}
+function ravImportLibrary(modal) {
+  return ravBulk(modal, "library", async () => {
+    const u = await ravUsername(); const out = []; let page = 1;
+    while (page < 40) { const j = await rav(`people/${u}/library/list.json`, { page_size: 100, page }); const vols = j.volumes || j.library || []; out.push(...vols); if (!j.paginator || page >= j.paginator.last_page) break; page++; }
+    return out.map(v => v.pattern_id || v.pattern?.id).filter(Boolean);
+  }, async id => data.patterns.some(p => p.ravelryId === id) ? "skip" : ravImportPattern(id, null, { silent: true }));
+}
+function ravImportQueue(modal) {
+  return ravBulk(modal, "queue", async () => { const u = await ravUsername(); const j = await rav(`people/${u}/queue/list.json`, { page_size: 100 }); return (j.queued_projects || []).filter(q => q.pattern_id); },
+    async q => { const pat = data.patterns.find(p => p.ravelryId === q.pattern_id) || await ravImportPattern(q.pattern_id, null, { silent: true }); if (data.projects.some(p => p.ravelryQueueId === q.id)) return "skip"; data.projects.push(newProject({ name: q.name || pat.name, patternId: pat.id, status: "planning", notes: q.notes || "", ravelryQueueId: q.id })); markDirty(); });
+}
+function ravImportProjects(modal) {
+  const statusMap = { "In progress": "active", "Finished": "finished", "Hibernating": "hibernating", "Frogged": "frogged", "Planned": "planning" };
+  return ravBulk(modal, "projects", async () => { const u = await ravUsername(); const j = await rav(`people/${u}/projects/list.json`, { page_size: 200 }); return j.projects || []; },
+    async pj => {
+      if (data.projects.some(p => p.ravelryId === pj.id)) return "skip";
+      let pat = null; if (pj.pattern_id) { try { pat = data.patterns.find(p => p.ravelryId === pj.pattern_id) || await ravImportPattern(pj.pattern_id, null, { silent: true }); } catch {} }
+      const pr = newProject({ name: pj.name || pat?.name || "Ravelry project", patternId: pat?.id || "", status: statusMap[pj.status_name] || "active", started: (pj.started || "").slice(0, 10), finished: (pj.completed || "").slice(0, 10), notes: stripHtml(pj.notes_html) || pj.notes || "", ravelryId: pj.id, updated: pj.updated_at || new Date().toISOString() });
+      if (pj.first_photo?.medium_url) { const att = await ravFetchImage(pj.first_photo.medium_url, "project.jpg"); if (att) pr.attachments.push(att); }
+      data.projects.push(pr); markDirty();
+    });
+}
+function ravImportStash(modal) {
+  return ravBulk(modal, "stash", async () => { const u = await ravUsername(); const j = await rav(`people/${u}/stash/list.json`, { page_size: 200 }); return j.stash || []; },
+    async s => {
+      if (data.yarns.some(y => y.ravelryStashId === s.id)) return "skip";
+      const extra = { ravelryStashId: s.id, colorway: s.colorway_name || "", qty: s.skeins ?? s.quantity ?? 1, notes: [s.dye_lot && "Dye lot " + s.dye_lot, s.location && "Location: " + s.location, stripHtml(s.notes_html) || s.notes].filter(Boolean).join(" · ") };
+      if (s.yarn?.id) { const y = await ravImportYarn(s.yarn.id, null, { silent: true, extra }); if (!y.notes && extra.notes) y.notes = extra.notes; }
+      else { const y = Object.assign(newYarn(), { brand: s.yarn_company_name || "", name: s.yarn_name || s.name || "Stash yarn", weight: ravWeightToApp(s.yarn_weight?.name) }, extra); data.yarns.push(y); markDirty(); }
+    });
+}
 </script>
 </body>
 </html>
