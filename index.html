@@ -103,6 +103,8 @@ label.f span{display:block;font-size:.82rem;color:var(--muted);margin-bottom:4px
 .rowlist div:last-child{border-bottom:0}
 .rowlist div.cur{background:var(--soft);font-weight:600}
 .rowlist div.done{color:var(--muted)}
+.rowlist div.sec{display:block;background:var(--soft);color:var(--accent);font-weight:700;font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;cursor:default;position:sticky;top:0;z-index:1}
+.rowlist span>div+div{margin-top:2px}
 .rowlist b{flex:none;min-width:52px;font-variant-numeric:tabular-nums}
 /* attachments */
 .att{display:flex;flex-wrap:wrap;gap:8px}
@@ -169,6 +171,8 @@ function el(tag, attrs, ...kids) {
   for (const k of kids.flat(Infinity)) if (k != null && k !== false) n.append(k.nodeType ? k : document.createTextNode(String(k)));
   return n;
 }
+// replaceChildren that skips null/false like el() does
+const setKids = (n, ...kids) => n.replaceChildren(...kids.flat(Infinity).filter(k => k != null && k !== false));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const today = () => new Date().toISOString().slice(0, 10);
 const fmtDate = d => d ? new Date(d + (d.length === 10 ? "T12:00:00" : "")).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
@@ -267,7 +271,7 @@ function openModal(title, body, actions) {
   }
   if (actions?.length) m.append(act);
   bg.append(m); document.body.append(bg); document.addEventListener("keydown", esc);
-  setTimeout(() => m.querySelector("input,textarea,select")?.focus(), 50);
+  setTimeout(() => { if (!m.contains(document.activeElement)) m.querySelector("input,textarea,select")?.focus(); }, 50);
   return { close, el: m };
 }
 function confirmDlg(msg, okLabel = "Delete") {
@@ -276,7 +280,9 @@ function confirmDlg(msg, okLabel = "Delete") {
 function field(label, input) { return el("label", { class: "f" }, el("span", null, label), input); }
 function inp(obj, key, opts = {}) {
   const i = el(opts.type === "textarea" ? "textarea" : "input", { type: opts.type === "textarea" ? null : (opts.type || "text"), placeholder: opts.placeholder || "", value: obj[key] ?? "", inputmode: opts.inputmode, list: opts.list });
-  i.addEventListener("change", () => { obj[key] = opts.type === "number" ? (i.value === "" ? "" : Number(i.value)) : i.value; opts.onchange?.(obj[key]); markDirty(); });
+  const commit = () => { obj[key] = opts.type === "number" ? (i.value === "" ? "" : Number(i.value)) : i.value; };
+  i.addEventListener("input", () => { commit(); markDirty(); });
+  i.addEventListener("change", () => { commit(); opts.onchange?.(obj[key]); markDirty(); });
   if (opts.type === "textarea") i.value = obj[key] ?? "";
   return i;
 }
@@ -285,7 +291,7 @@ function sel(obj, key, options, onchange) {
   s.addEventListener("change", () => { obj[key] = s.value; onchange?.(s.value); markDirty(); });
   return s;
 }
-function datalist(id, values) { let d = document.getElementById(id); if (!d) { d = el("datalist", { id }); document.body.append(d); } d.replaceChildren(...[...new Set(values.filter(Boolean))].map(v => el("option", { value: v }))); return id; }
+function datalist(id, values) { let d = document.getElementById(id); if (!d) { d = el("datalist", { id }); document.body.append(d); } setKids(d, ...[...new Set(values.filter(Boolean))].map(v => el("option", { value: v }))); return id; }
 const HOOK_SIZES = ["2.0 mm (B-1)", "2.25 mm (B-1)", "2.75 mm (C-2)", "3.25 mm (D-3)", "3.5 mm (E-4)", "3.75 mm (F-5)", "4.0 mm (G-6)", "4.5 mm (7)", "5.0 mm (H-8)", "5.5 mm (I-9)", "6.0 mm (J-10)", "6.5 mm (K-10½)", "8.0 mm (L-11)", "9.0 mm (M/N-13)", "10.0 mm (N/P-15)", "12.0 mm (P/Q)", "15.0 mm (P/Q)"];
 const YARN_WEIGHTS = ["0 – Lace", "1 – Super Fine (fingering/sock)", "2 – Fine (sport)", "3 – Light (DK)", "4 – Medium (worsted/aran)", "5 – Bulky (chunky)", "6 – Super Bulky", "7 – Jumbo"];
 const STATUSES = [["planning", "Planning"], ["active", "In progress"], ["hibernating", "Hibernating"], ["finished", "Finished"], ["frogged", "Frogged"]];
@@ -298,34 +304,211 @@ let route = { tab: settings.lastTab || "projects", id: null, sub: null };
 function go(tab, id = null, sub = null) { route = { tab, id, sub }; settings.lastTab = tab; saveSettings(); try { history.replaceState(null, "", "#" + [tab, id, sub].filter(Boolean).join("/")); } catch {} render(); }
 function render() {
   flushSave();
-  $("#tabs").replaceChildren(...TABS.map(([k, l]) => el("button", { class: route.tab === k ? "on" : "", onclick: () => go(k) }, l)));
+  setKids($("#tabs"), ...TABS.map(([k, l]) => el("button", { class: route.tab === k ? "on" : "", onclick: () => go(k) }, l)));
   const main = $("#main"); main.replaceChildren();
   window.scrollTo(0, 0);
   const v = VIEWS[route.tab] || VIEWS.projects;
   v(main);
 }
 /* ========== pattern text parsing ========== */
-// Turns free text into an ordered list of rows/rounds. Lines starting with
-// "Row 3", "Rnd 3", "Round 3", "R3", "Rows 4-6", "Rounds 2–5" become rows;
-// a range expands into one entry per row with the same instruction.
-// Other lines are kept as notes attached to the following row (or as section headers).
-const ROW_RE = /^\s*(?:\*\*|__)?\s*(rows?|rnds?|rounds?|r)\s*\.?\s*(\d+)\s*(?:\s*(?:-|–|—|to|through|thru)\s*(\d+))?\s*[:.)\-–—]?\s*(?:\*\*|__)?\s*[:.)\-–—]?\s*(.*)$/i;
-function parsePatternRows(text) {
-  const rows = []; let pendingNote = [];
-  for (const raw of String(text || "").split(/\r?\n/)) {
-    const line = raw.trim(); if (!line) continue;
+// Turns free text into (a) an ordered list of rows/rounds and (b) notes.
+// Lines starting with "Row 3", "Rnd 3", "Round 3", "R3", "Rows 4-6", "Rounds 2-5"
+// become rows and carry only that row's instruction. Everything else is a note:
+// ALL-CAPS lines (BELL, HOLLY LEAF (MAKE TWO), PART 3) become section headings;
+// prose before a section's first row becomes that row's lead-in ("With Cream,
+// make a magic ring."); prose after a row is kept with that row ("Fasten off.");
+// prose in a section with no rows at all (materials, gauge, assembly) becomes a
+// pattern note. Notes are never counter steps.
+const ROW_RE = /^\s*(?:\*\*|__)?\s*(rows?|rnds?|rounds?|r)\s*\.?\s*(\d+)\s*(?:\s*(?:-|\u2013|\u2014|to|through|thru)\s*(\d+))?\s*[:.)\-\u2013\u2014]?\s*(?:\*\*|__)?\s*[:.)\-\u2013\u2014]?\s*(.*)$/i;
+const cleanLine = l => l.replace(/^\s*(?:\*\*|__|##+|\u2022|-)\s*/, "").replace(/\s*(?:\*\*|__)\s*$/, "").trim();
+function isHeading(line) {
+  const t = line.replace(/[:.]\s*$/, "").trim();
+  if (!t || t.length > 46) return false;
+  if (/^(layer|part|side|step|piece|half)\s+[0-9ivx]+$/i.test(t)) return true;
+  return !/[a-z]/.test(t) && /[A-Z]{2,}/.test(t);
+}
+function parsePattern(text) {
+  const rows = [], notes = [];
+  let section = "", pending = [], sectionHasRow = false;
+  const flushPending = () => { if (pending.length) { notes.push({ section, text: pending.join(" ") }); pending = []; } };
+  const all = String(text || "").split(/\r?\n/).map(cleanLine).filter(Boolean);
+  const boiler = boilerplate(all);
+  for (const line of all) {
+    if (boiler.has(line)) continue;
     const m = line.match(ROW_RE);
     if (m) {
       const kind = /^rnd|^round/i.test(m[1]) ? "Rnd" : "Row";
-      const a = +m[2], b = m[3] ? +m[3] : a, text = m[4].trim();
+      const a = +m[2], b = m[3] ? +m[3] : a, body = m[4].trim();
       if (b < a || b - a > 500) continue;
+      const lead = pending.join(" "); pending = [];
       for (let n = a; n <= b; n++) {
-        rows.push({ n, kind, text: text || "(same as above)", note: pendingNote.length ? pendingNote.join(" ") : "", range: b > a ? `${a}–${b}` : "" });
-        pendingNote = [];
+        rows.push({ v: 2, n, kind, section, text: body || "(same as above)", lead: n === a ? lead : "", note: n === a ? lead : "", after: "", range: b > a ? `${a}\u2013${b}` : "" });
       }
-    } else pendingNote.push(line);
+      sectionHasRow = true;
+    } else if (isHeading(line)) {
+      flushPending();
+      section = line.replace(/[:.]\s*$/, "").trim(); sectionHasRow = false;
+    } else if (sectionHasRow && rows.length) {
+      const last = rows[rows.length - 1]; last.after = last.after ? last.after + " " + line : line;
+    } else pending.push(line);
   }
-  return rows;
+  flushPending();
+  return { rows, notes };
+}
+function parsePatternRows(text) { return parsePattern(text).rows; }
+// Re-parse a pattern's text into rows + notes (used everywhere text changes).
+function reparsePattern(p) { const r = parsePattern(p.text); p.rows = r.rows; p.rowNotes = r.notes; applyPatternMeta(p); return p.rows; }
+const short = (t, n = 90) => !t ? "" : t.length > n ? t.slice(0, n - 1).trimEnd() + "\u2026" : t;
+// One scrollable list of rows, grouped under their section headings.
+function rowListEl(rows, opts = {}) {
+  const box = el("div", { class: "rowlist", style: opts.style || "" });
+  let sec = null;
+  rows.forEach((r, i) => {
+    if (r.section !== sec) { sec = r.section; if (sec) box.append(el("div", { class: "sec" }, sec)); }
+    const cls = opts.cur === undefined ? "" : i === opts.cur - 1 ? "cur" : i < opts.cur - 1 ? "done" : "";
+    const line = el("div", { class: cls }, el("b", null, rowLabel(r)),
+      el("span", null, r.lead ? el("div", { class: "muted small" }, short(r.lead, 70)) : null, el("div", null, r.text),
+        r.after ? el("div", { class: "muted small" }, "\u21b3 " + short(r.after, 70)) : null));
+    if (opts.onpick) line.onclick = () => opts.onpick(i);
+    else line.style.cursor = "default";
+    box.append(line);
+  });
+  return box;
+}
+// All the prose that isn't a row: section notes plus the pattern's own notes field.
+function patternNoteBlocks(p, includeOwn = true) {
+  const out = [];
+  if (includeOwn && p.notes) out.push({ section: "My notes", text: p.notes });
+  for (const n of p.rowNotes || []) out.push(n);
+  return out;
+}
+/* ---------- materials: name, hook, yarn and notions read out of the pattern text ---------- */
+const YARN_BRANDS = ["Hobbii", "Scheepjes", "Lion Brand", "Red Heart", "Bernat", "Caron", "Paintbox", "DROPS", "Cascade", "Malabrigo", "Premier", "Loops & Threads", "Yarn Bee", "Ricorumi", "Rico", "Katia", "Sirdar", "King Cole", "Stylecraft", "We Are Knitters", "Knit Picks", "Patons", "Big Twist", "Lily Sugar'n Cream", "Sugar'n Cream", "YarnArt", "Alize", "Himalaya", "Etrofil", "Ice Yarns", "Circulo", "DMC", "Phildar", "Novita", "Sandnes"];
+const SECTION_WORDS = /^(yarns?|hooks?|needles?|notions?|materials?|supplies|tools|gauge|notes?|finished measurements?|measurements?|size[sd]?|abbreviations?|special stitches?|stitches used|stitch guide|assembly|instructions?|pattern|difficulty|skill level|you will need|tips|contents?|copyright)\b/i;
+const titleCase = t => /[a-z]/.test(t) ? t : t.toLowerCase().replace(/\b[\w'\u2019]+\b/g, (w, i) => i && /^(of|the|and|a|an|in|for|with|to|on|at|by)$/.test(w) ? w : w.charAt(0).toUpperCase() + w.slice(1));
+// Lines that repeat on every page of a PDF (running headers) and page numbers.
+function boilerplate(lines) {
+  const count = {}; for (const l of lines) count[l] = (count[l] || 0) + 1;
+  return new Set(Object.keys(count).filter(l => /^\d{1,4}$/.test(l) || (count[l] >= 3 && l.length > 12 && (!/[a-z]/.test(l) || l.length > 60))));
+}
+function guessHook(lines) {
+  for (const l of lines) {
+    if (!/hook/i.test(l)) continue;
+    const mm = l.match(/(\d+(?:[.,]\d+)?)\s*mm/i);
+    if (mm) { const v = parseFloat(mm[1].replace(",", ".")); return HOOK_SIZES.find(h => parseFloat(h) === v) || v + " mm"; }
+    const us = l.match(/\b([A-N])[-\/]?(\d{1,2})\b/);
+    if (us) { const hit = HOOK_SIZES.find(h => h.includes("(" + us[1] + "-" + us[2] + ")")); if (hit) return hit; }
+  }
+  return "";
+}
+function guessWeight(lines) {
+  for (const l of lines) {
+    if (!/weight|yarn|thread/i.test(l)) continue;
+    const n = l.match(/#\s*([0-7])\b/); if (n) return YARN_WEIGHTS[+n[1]];
+    const w = WEIGHT_WORDS.find(([re]) => re.test(l)); if (w) return w[1];
+  }
+  return "";
+}
+const YARN_LINE_RE = /(?:shown in|yarn used|worked in|i used|made (?:with|in))\s+(.{3,60}?)\s*\(([^)]{5,120})\)/i;
+const YARN_PLAIN_RE = /^([A-Z][\w'\u2019&\/ .\u2013-]{2,50}?)\s*\(\s*(\d{1,3}\s*%[^)]{3,120})\)/;
+const COLOR_RE = /^(\d{1,4})\s+([A-Za-z][A-Za-z'\u2019\- ]{2,28})$/;
+function splitYarnName(full) {
+  const t = full.replace(/^(?:the\s+)?/i, "").trim();
+  const b = YARN_BRANDS.find(br => t.toLowerCase().startsWith(br.toLowerCase()));
+  if (b) return { brand: b, name: t.slice(b.length).trim() };
+  const parts = t.split(/\s+/);
+  return parts.length > 1 ? { brand: parts[0], name: parts.slice(1).join(" ") } : { brand: "", name: t };
+}
+function parseYarnDetail(inside) {
+  const fiber = (inside.match(/\d{1,3}\s*%\s*[A-Za-z][A-Za-z ]*/g) || []).join(", ").trim();
+  const yards = inside.match(/(\d[\d,.]*)\s*(?:yd|yds|yards)/i);
+  const g = inside.match(/(\d[\d,.]*)\s*(?:g|grams?)\b/i), oz = inside.match(/(\d[\d,.]*)\s*oz\b/i);
+  return { fiber, yards: yards ? yards[1] : "", grams: g ? g[1] + " g" : oz ? oz[1] + " oz" : "" };
+}
+const SUPPLY_GUESS = [[/stuff|fiberfill|fill\b|pellet/i, "Stuffing & fill"], [/needle/i, "Needles"], [/marker/i, "Stitch markers"],
+  [/scissor|tweezer|ruler|pliers|cutter/i, "Scissors & tools"], [/safety eyes|eyes|nose|joint|wire|armature|bell\b/i, "Safety eyes & notions"],
+  [/button|snap|zipper|closure/i, "Buttons & closures"], [/hook/i, "Hooks"]];
+const supplyCategory = t => (SUPPLY_GUESS.find(([re]) => re.test(t)) || [null, "Other"])[1];
+// Pulls the pattern's name, hook, yarn weight, yarns/colorways and notions out of free text.
+function parsePatternMeta(text) {
+  const lines = String(text || "").split(/\r?\n/).map(cleanLine).filter(Boolean);
+  const boiler = boilerplate(lines);
+  const body = lines.filter(l => !boiler.has(l));
+  let name = "";
+  for (const l of body.slice(0, 40)) {
+    const t = l.replace(/[:.]\s*$/, "").trim();
+    if (!t || SECTION_WORDS.test(t) || ROW_RE.test(t) || t.length < 3 || t.length > 46) continue;
+    if (isHeading(t)) { name = titleCase(t); break; }
+  }
+  const designer = (body.find(l => /^(?:designed by|design(?:er)?:|pattern by)\s+[A-Z]/i.test(l)) || "").replace(/^(?:designed by|design(?:er)?:|pattern by)\s+/i, "").trim();
+  const yarns = []; const notions = []; let part = "", grabbing = "";
+  for (const l of body) {
+    if (isHeading(l)) {
+      const h = l.replace(/[:.]\s*$/, "").trim();
+      grabbing = /^(notions?|materials?|supplies|tools|you will need)\b/i.test(h) ? "notions" : "";
+      part = SECTION_WORDS.test(h) ? "" : h;
+      continue;
+    }
+    const y = l.match(YARN_LINE_RE) || l.match(YARN_PLAIN_RE);
+    if (y) { const sp = splitYarnName(y[1]); yarns.push({ brand: sp.brand, name: sp.name, ...parseYarnDetail(y[2]), weight: guessWeight([l]), colors: [] }); continue; }
+    const c = l.match(COLOR_RE);
+    if (c && yarns.length) { const col = { code: c[1], name: c[2].trim(), part }; const last = yarns[yarns.length - 1]; if (!last.colors.some(x => x.code === col.code && x.name === col.name)) last.colors.push(col); continue; }
+    if (grabbing === "notions" && notions.length < 24) { const t = l.replace(/^[\u2022*\-\u00b7]\s*/, "").trim(); if (t && t.length < 90 && !/^hook\b/i.test(t)) notions.push(t); }
+  }
+  return { name, designer, hook: guessHook(body), weight: guessWeight(body), yarns, notions };
+}
+// Fills blank fields only - anything typed by hand wins.
+function applyPatternMeta(p, meta) {
+  meta ||= parsePatternMeta(p.text);
+  p.materials = { yarns: meta.yarns, notions: meta.notions };
+  if ((!p.name?.trim() || p.nameFromFile) && meta.name) { p.name = meta.name; delete p.nameFromFile; }
+  if (!p.designer?.trim() && meta.designer) p.designer = meta.designer;
+  if (!p.hook?.trim() && meta.hook) p.hook = meta.hook;
+  if (!p.weight?.trim() && meta.weight) p.weight = meta.weight;
+  return meta;
+}
+const metaSummary = m => [m.name && "name", m.hook && "hook " + m.hook, m.weight && "yarn weight", m.yarns.length && m.yarns.reduce((n, y) => n + (y.colors.length || 1), 0) + " yarn colour(s)", m.notions.length && m.notions.length + " notions"].filter(Boolean).join(" \u00b7 ");
+// Materials block on the pattern page, with one-tap adds into the stash and supplies.
+function materialsSection(p) {
+  const m = p.materials || { yarns: [], notions: [] };
+  if (!m.yarns?.length && !m.notions?.length && !p.hook) return null;
+  const sec = el("div", { class: "section" }, el("h3", null, "Materials from the pattern"),
+    el("p", { class: "muted small" }, "Read out of the pattern text \u2014 tap to add what you need to your stash or supplies."));
+  const card = el("div", { class: "card", style: "margin-top:8px" });
+  for (const y of m.yarns || []) {
+    const title = [y.brand, y.name].filter(Boolean).join(" ");
+    const det = [y.fiber, y.yards && y.yards + " yd", y.grams, y.weight].filter(Boolean).join(" \u00b7 ");
+    card.append(el("div", { style: "margin-bottom:10px" }, el("div", null, el("b", null, title)), det ? el("div", { class: "muted small" }, det) : null,
+      el("div", { class: "flex", style: "flex-wrap:wrap;margin-top:6px" }, (y.colors?.length ? y.colors : [null]).map(c => {
+        const label = c ? [c.code, c.name].filter(Boolean).join(" ") + (c.part ? " \u00b7 " + titleCase(c.part) : "") : "Add to stash";
+        return el("button", { class: "btn small", onclick: () => {
+          const dupe = data.yarns.find(x => x.brand === y.brand && x.name === y.name && (x.colorway || "").startsWith(c ? c.code : "\u0000"));
+          if (dupe) { go("yarns", dupe.id); return toast("Already in your stash"); }
+          const ny = newYarn({ brand: y.brand, name: y.name, colorway: c ? [c.code, c.name].filter(Boolean).join(" ") : "", weight: y.weight || p.weight || "", fiber: y.fiber || "", yards: y.yards || "", grams: /g$/.test(y.grams || "") ? y.grams.replace(/[^\d.]/g, "") : "", hook: p.hook || "", qty: 1, notes: c && c.part ? "For the " + titleCase(c.part) + " in " + (p.name || "this pattern") : "" });
+          data.yarns.push(ny); markDirty(); toast("Added to stash"); render();
+        } }, "+ " + label);
+      }))));
+  }
+  if (m.notions?.length) {
+    const chips = el("div", { class: "flex", style: "flex-wrap:wrap;margin-top:6px" }, m.notions.map(n => el("button", { class: "btn small", onclick: () => {
+      if (data.supplies.some(s => s.name.toLowerCase() === n.toLowerCase())) return toast("Already in supplies");
+      data.supplies.push(newSupply({ name: n, category: supplyCategory(n) })); markDirty(); toast("Added to supplies"); render();
+    } }, "+ " + n)));
+    card.append(el("div", { style: "margin-top:6px" }, el("div", null, el("b", null, "Notions")), chips));
+  }
+  if (p.hook) card.append(el("div", { style: "margin-top:10px" }, el("button", { class: "btn small", onclick: () => {
+    if (data.supplies.some(s => s.category === "Hooks" && s.size === p.hook)) return toast("You already have that hook");
+    data.supplies.push(newSupply({ category: "Hooks", size: p.hook, name: "Crochet hook" })); markDirty(); toast("Hook added to supplies"); render();
+  } }, "+ " + p.hook + " hook to supplies")));
+  sec.append(card);
+  return sec;
+}
+function notesEl(p, includeOwn = true) {
+  const blocks = patternNoteBlocks(p, includeOwn);
+  if (!blocks.length) return null;
+  return el("div", null, blocks.map(b => el("div", { style: "margin-bottom:10px" },
+    b.section ? el("div", { class: "muted small", style: "text-transform:uppercase;letter-spacing:.06em" }, b.section) : null,
+    el("div", { class: "notes" }, b.text))));
 }
 const rowLabel = r => r ? `${r.kind} ${r.n}` : "";
 
@@ -338,7 +521,7 @@ function patternSummary(p) {
   if (p.url) bits.push("link");
   return bits.join(" · ");
 }
-function newPattern() { return { id: uid(), name: "", designer: "", url: "", text: "", rows: [], attachments: [], hook: "", weight: "", tags: "", notes: "", created: today() }; }
+function newPattern() { return { id: uid(), name: "", designer: "", url: "", text: "", rows: [], rowNotes: [], materials: { yarns: [], notions: [] }, attachments: [], hook: "", weight: "", tags: "", notes: "", created: today() }; }
 
 VIEWS.patterns = main => {
   if (route.id) return patternDetail(main, byId(data.patterns, route.id));
@@ -365,26 +548,38 @@ function importPatternDlg() {
   const status = el("div", { class: "muted small" });
   const fileIn = el("input", { type: "file", multiple: true, accept: ".pdf,image/*,.txt,.md,text/plain,text/markdown", onchange: async e => {
     for (const f of e.target.files) {
-      if (/^text\//.test(f.type) || /\.(txt|md)$/i.test(f.name)) { p.text = (p.text ? p.text + "\n\n" : "") + await f.text(); ta.value = p.text; if (!p.name) { p.name = f.name.replace(/\.[^.]+$/, ""); nameIn.value = p.name; } }
-      else { files.push(f); if (!p.name) { p.name = f.name.replace(/\.[^.]+$/, ""); nameIn.value = p.name; } }
+      if (/^text\//.test(f.type) || /\.(txt|md)$/i.test(f.name)) { p.text = (p.text ? p.text + "\n\n" : "") + await f.text(); ta.value = p.text; if (!p.name) { p.name = f.name.replace(/\.[^.]+$/, ""); p.nameFromFile = 1; nameIn.value = p.name; } }
+      else { files.push(f); if (!p.name) { p.name = f.name.replace(/\.[^.]+$/, ""); p.nameFromFile = 1; nameIn.value = p.name; } }
     }
     status.textContent = files.length ? files.length + " file(s) ready to attach" : "";
+    const pdf = files.find(f => f.type === "application/pdf" || /\.pdf$/i.test(f.name));
+    if (pdf && !ta.value.trim()) {
+      status.textContent = "Reading text from " + pdf.name + "…";
+      try {
+        const r = await extractPdfText(pdf, (i, n) => { status.textContent = `Reading ${pdf.name}: page ${i} of ${n}…`; });
+        if (r.scanned) status.textContent = files.length + " file(s) ready to attach · this PDF is scanned images, so there's no text to extract — paste the rows if you want the counter to follow along.";
+        else { p.text = r.text; ta.value = r.text; const n = parsePatternRows(r.text).length; const meta = applyPatternMeta(p); nameIn.value = p.name; hookIn.value = p.hook; weightIn.value = p.weight || ""; const found = metaSummary(meta); status.textContent = files.length + ` file(s) ready to attach · text extracted from ${r.pages} page(s), ${n} rows detected` + (found ? " · found " + found : "") + " — review it below."; }
+      } catch (err) { status.textContent = files.length + " file(s) ready to attach · couldn't read the PDF text (" + err.message + "). You can extract it later from the pattern page."; }
+    }
   } });
   const nameIn = inp(p, "name", { placeholder: "e.g. Granny Square Blanket" });
   const ta = inp(p, "text", { type: "textarea", placeholder: "Paste the written pattern here. Lines like \"Row 1: ch 20, sc in 2nd ch…\" or \"Rnd 3: …\" become steps for the row counter." });
   ta.style.minHeight = "160px";
+  const hookIn = inp(p, "hook", { list: datalist("dl-hooks", HOOK_SIZES) });
+  const weightIn = sel(p, "weight", [["", "—"], ...YARN_WEIGHTS]);
   const body = el("div", null,
     field("Pattern name", nameIn),
     el("div", { class: "row" }, field("Designer", inp(p, "designer")), field("Tags (comma separated)", inp(p, "tags", { placeholder: "blanket, gift" }))),
     field("Link (Ravelry, Etsy, blog…)", inp(p, "url", { type: "url", placeholder: "https://" })),
     field("Files — PDF, photos, or .txt/.md", fileIn), status,
     field("Written instructions", ta),
-    el("div", { class: "row" }, field("Hook", (() => { const i = inp(p, "hook", { list: datalist("dl-hooks", HOOK_SIZES) }); return i; })()), field("Yarn weight", sel(p, "weight", [["", "—"], ...YARN_WEIGHTS]))));
+    el("div", { class: "row" }, field("Hook", hookIn), field("Yarn weight", weightIn)));
   openModal("Import / new pattern", body, [{ label: "Cancel" }, "spacer", { label: "Save pattern", cls: "primary", run: async () => {
     flushSave();
     if (!p.name.trim() && !files.length && !p.text.trim() && !p.url.trim()) { toast("Add a name, a file, text, or a link first"); return false; }
+    reparsePattern(p);
     if (!p.name.trim()) p.name = files[0]?.name.replace(/\.[^.]+$/, "") || "Untitled pattern";
-    p.rows = parsePatternRows(p.text);
+    delete p.nameFromFile;
     for (const f of files) { try { p.attachments.push(await storeFile(f)); } catch (e) { toast("Could not store " + f.name); } }
     data.patterns.push(p); markDirty(); flushSave();
     toast(p.rows.length ? `Saved — ${p.rows.length} rows detected` : "Pattern saved");
@@ -406,9 +601,19 @@ function patternDetail(main, p) {
   main.append(el("div", { class: "section" }, el("div", { class: "flex" }, el("h3", { style: "flex:1" }, "Projects ", el("span", { class: "cnt" }, used.length)), el("button", { class: "btn small primary", onclick: () => newProjectDlg({ patternId: p.id, name: p.name }) }, "+ Start project")),
     used.length ? el("div", { class: "grid", style: "margin-top:8px" }, used.map(projectCard)) : el("p", { class: "muted small" }, "No projects use this pattern yet.")));
   main.append(attachmentsSection(p));
+  const pdfs = (p.attachments || []).filter(a => a.type === "application/pdf");
+  if (pdfs.length) main.append(el("div", { class: "card flex", style: "margin-top:12px;flex-wrap:wrap" },
+    el("span", { style: "flex:1;min-width:200px" }, p.rows?.length ? el("span", { class: "small" }, "Re-read the PDF to refresh the counter's rows.") : el("span", { class: "small" }, el("b", null, "Let the counter follow this PDF. "), "Pull the written rows out of the PDF so the counter shows each row as you work.")),
+    pdfs.map(a => el("button", { class: "btn small" + (p.rows?.length ? "" : " primary"), onclick: () => extractPatternPdf(p, a) }, "📄 Extract rows" + (pdfs.length > 1 ? " · " + a.name.slice(0, 24) : "")))));
+  const mats = materialsSection(p); if (mats) main.append(mats);
+  const nb = patternNoteBlocks(p, false);
+  if (nb.length) main.append(el("div", { class: "section" },
+    el("h3", null, "Pattern notes ", el("span", { class: "cnt" }, nb.length)),
+    el("p", { class: "muted small" }, "Materials, gauge, finishing — anything that isn't a numbered round is kept here instead of on the rows."),
+    el("div", { class: "card", style: "margin-top:8px" }, notesEl(p, false))));
   if (p.rows?.length || p.text) {
     const sec = el("div", { class: "section" }, el("h3", null, "Rows ", el("span", { class: "cnt" }, p.rows.length)));
-    if (p.rows.length) sec.append(el("div", { class: "rowlist" }, p.rows.map(r => el("div", null, el("b", null, rowLabel(r)), el("span", null, r.note ? el("span", { class: "muted small" }, r.note + " — ") : null, r.text)))));
+    if (p.rows.length) sec.append(rowListEl(p.rows));
     else sec.append(el("p", { class: "muted small" }, "No rows detected. Rows are recognized when lines start with “Row 1:”, “Rnd 2:”, “Round 3”, or “Rows 4-6:”."));
     sec.append(el("details", { style: "margin-top:10px" }, el("summary", { class: "muted small" }, "Full text"), el("div", { class: "notes small", style: "margin-top:6px" }, p.text)));
     main.append(sec);
@@ -422,7 +627,7 @@ function editPatternDlg(p) {
     el("div", { class: "row" }, field("Hook", inp(p, "hook", { list: datalist("dl-hooks", HOOK_SIZES) })), field("Yarn weight", sel(p, "weight", [["", "—"], ...YARN_WEIGHTS]))),
     field("Notes", inp(p, "notes", { type: "textarea" })),
     field("Written instructions (re-parsed on save)", ta));
-  openModal("Edit pattern", body, [{ label: "Cancel" }, "spacer", { label: "Save", cls: "primary", run: () => { flushSave(); p.rows = parsePatternRows(p.text); markDirty(); render(); } }]);
+  openModal("Edit pattern", body, [{ label: "Cancel" }, "spacer", { label: "Save", cls: "primary", run: () => { flushSave(); reparsePattern(p); markDirty(); render(); } }]);
 }
 
 /* ========== attachments UI (shared by patterns & projects) ========== */
@@ -439,7 +644,7 @@ function attachmentsSection(owner, opts = {}) {
   if (!owner.attachments.length) wrap.append(el("span", { class: "muted small" }, opts.empty || "Attach PDFs or photos."));
   for (const a of owner.attachments) {
     const card = el("div", { class: "a", onclick: () => viewAttachment(a) });
-    if (a.type.startsWith("image/")) { const img = el("img", { alt: a.name }); attachmentURL(a.id).then(u => { if (u) img.src = u; else card.replaceChildren(el("div", { class: "ph" }, "⚠️")); }); card.append(img); }
+    if (a.type.startsWith("image/")) { const img = el("img", { alt: a.name }); attachmentURL(a.id).then(u => { if (u) img.src = u; else setKids(card, el("div", { class: "ph" }, "⚠️")); }); card.append(img); }
     else card.append(el("div", { class: "ph" }, a.type === "application/pdf" ? "📄" : "📎"));
     card.append(el("div", { class: "nm", title: a.name }, a.name), el("button", { class: "x", onclick: async e => { e.stopPropagation(); if (await confirmDlg(`Remove ${a.name}?`, "Remove")) { removeById(owner.attachments, a.id); idb.del(a.id).catch(() => {}); markDirty(); render(); } } }, "×"));
     wrap.append(card);
@@ -537,7 +742,7 @@ function projectDetail(main, pr) {
 function pickYarnDlg(pr) {
   const q = el("input", { type: "search", placeholder: "Search your stash…" });
   const list = el("div", { class: "rowlist", style: "margin-top:8px" });
-  const draw = () => { const s = q.value.toLowerCase(); list.replaceChildren(...data.yarns.filter(y => !pr.yarnIds.includes(y.id) && (!s || yarnTitle(y).toLowerCase().includes(s))).map(y => el("div", { onclick: () => { pr.yarnIds.push(y.id); markDirty(); m.close(); render(); } }, el("span", null, yarnTitle(y), " ", el("span", { class: "muted small" }, [y.weight, y.colorway].filter(Boolean).join(" · ")))))); if (!list.children.length) list.append(el("div", { class: "muted" }, data.yarns.length ? "No matches." : "Your stash is empty — add yarn in the Yarn tab.")); };
+  const draw = () => { const s = q.value.toLowerCase(); setKids(list, ...data.yarns.filter(y => !pr.yarnIds.includes(y.id) && (!s || yarnTitle(y).toLowerCase().includes(s))).map(y => el("div", { onclick: () => { pr.yarnIds.push(y.id); markDirty(); m.close(); render(); } }, el("span", null, yarnTitle(y), " ", el("span", { class: "muted small" }, [y.weight, y.colorway].filter(Boolean).join(" · ")))))); if (!list.children.length) list.append(el("div", { class: "muted" }, data.yarns.length ? "No matches." : "Your stash is empty — add yarn in the Yarn tab.")); };
   q.addEventListener("input", draw); draw();
   const m = openModal("Add yarn to project", el("div", null, q, list), [{ label: "Close" }]);
 }
@@ -560,24 +765,27 @@ function counterView(main, pr) {
   const repCard = el("div", { class: "count-card secondary" });
   const side = el("div");
   function paint() {
-    const cur = rows.find(r => r.n === c.row), next = rows.find(r => r.n === c.row + 1);
-    rowCard.replaceChildren(el("div", { class: "lbl" }, "Row"), el("div", { class: "num" }, c.row, total ? el("small", null, " / " + total) : null),
+    const cur = c.row > 0 ? rows[c.row - 1] : null, next = rows[c.row];
+    setKids(rowCard, el("div", { class: "lbl" }, rows.some((r, i) => i > 0 && r.n <= rows[i - 1].n) ? "Step" : "Row"), el("div", { class: "num" }, c.row, total ? el("small", null, " / " + total) : null),
       total ? el("div", { class: "progress" }, el("i", { style: "width:" + Math.min(100, Math.round(c.row / total * 100)) + "%" })) : null,
       el("div", { class: "bigbtns" }, el("button", { onclick: dec, "aria-label": "minus one row" }, "−"), el("button", { class: "plus", onclick: inc, "aria-label": "plus one row" }, "+")),
-      cur ? el("div", { class: "instr" }, el("div", { class: "n" }, "Just finished · " + rowLabel(cur)), cur.text) : null,
-      next ? el("div", { class: "instr next" }, el("div", { class: "n" }, "Next · " + rowLabel(next)), next.note ? el("div", { class: "muted small" }, next.note) : null, next.text) : null,
+      cur ? el("div", { class: "instr" }, el("div", { class: "n" }, "Just finished · " + [cur.section, rowLabel(cur)].filter(Boolean).join(" · ")), cur.text,
+        cur.after ? el("div", { class: "muted small", style: "margin-top:6px" }, cur.after) : null) : null,
+      next ? el("div", { class: "instr next" }, el("div", { class: "n" }, "Next · " + [next.section, rowLabel(next)].filter(Boolean).join(" · ")),
+        next.lead ? el("div", { class: "muted small" }, next.lead) : null, next.text) : null,
       el("div", { class: "mini" }, el("button", { class: "btn small", onclick: undo }, "↶ Undo"),
+        pat && patternNoteBlocks(pat).length ? el("button", { class: "btn small", onclick: () => openModal("Pattern notes", notesEl(pat), [{ label: "Close" }]) }, "Notes") : null,
         el("button", { class: "btn small", onclick: () => { const v = prompt("Set current row", c.row); if (v !== null && !isNaN(+v)) { push("set"); c.row = Math.max(0, +v); commit(); } } }, "Set row…"),
         el("button", { class: "btn small", onclick: () => { const v = prompt("Total rows in this project (0 = use pattern)", c.rowTarget || ""); if (v !== null && !isNaN(+v)) { c.rowTarget = Math.max(0, +v); markDirty(); go("projects", pr.id, "count"); } } }, "Target…"),
         el("button", { class: "btn small danger", onclick: async () => { if (await confirmDlg("Reset row and repeat counters to 0?", "Reset")) { push("reset"); c.row = 0; c.rep = 0; commit(); } } }, "Reset")));
-    if (c.repEnabled) repCard.replaceChildren(el("div", { class: "lbl" }, "Repeat / stitch counter"), el("div", { class: "num" }, c.rep, c.repTarget ? el("small", null, " / " + c.repTarget) : null),
+    if (c.repEnabled) setKids(repCard, el("div", { class: "lbl" }, "Repeat / stitch counter"), el("div", { class: "num" }, c.rep, c.repTarget ? el("small", null, " / " + c.repTarget) : null),
       el("div", { class: "bigbtns" }, el("button", { onclick: decRep }, "−"), el("button", { class: "plus", onclick: incRep }, "+")),
       el("div", { class: "mini" }, el("button", { class: "btn small", onclick: () => { const v = prompt("Repeat target — when reached, the repeat resets and the row advances (0 = no target)", c.repTarget || ""); if (v !== null && !isNaN(+v)) { c.repTarget = Math.max(0, +v); commit(); } } }, "Target…"),
         el("button", { class: "btn small", onclick: () => { c.rep = 0; commit(); } }, "Zero"), el("button", { class: "btn small", onclick: () => { c.repEnabled = false; commit(); } }, "Hide")));
-    else repCard.replaceChildren(el("div", { class: "lbl" }, "Repeat / stitch counter"), el("p", { class: "muted small" }, "Count pattern repeats or stitches within a row. Optional target auto-advances the row."), el("button", { class: "btn", onclick: () => { c.repEnabled = true; commit(); } }, "Enable second counter"));
-    side.replaceChildren(repCard);
+    else setKids(repCard, el("div", { class: "lbl" }, "Repeat / stitch counter"), el("p", { class: "muted small" }, "Count pattern repeats or stitches within a row. Optional target auto-advances the row."), el("button", { class: "btn", onclick: () => { c.repEnabled = true; commit(); } }, "Enable second counter"));
+    setKids(side, repCard);
     if (rows.length) {
-      const rl = el("div", { class: "rowlist", style: "margin-top:12px;max-height:40vh" }, rows.map(r => el("div", { class: r.n === c.row ? "cur" : r.n < c.row ? "done" : "", onclick: () => { push("jump"); c.row = r.n; commit(); } }, el("b", null, rowLabel(r)), el("span", null, r.text))));
+      const rl = rowListEl(rows, { cur: c.row, style: "margin-top:12px;max-height:40vh", onpick: i => { push("jump"); c.row = i + 1; commit(); } });
       side.append(el("h3", { style: "margin-top:14px" }, "Pattern rows ", el("span", { class: "cnt" }, "tap to jump")), rl);
       setTimeout(() => { const cur = rl.querySelector(".cur"); if (cur) rl.scrollTop = Math.max(0, cur.offsetTop - rl.clientHeight / 2 + cur.offsetHeight / 2); }, 0);
     }
@@ -802,7 +1010,7 @@ VIEWS.data = main => {
   const proxyIn = el("input", { type: "url", value: settings.proxy || "", placeholder: "https://your-worker.workers.dev", autocomplete: "off", onchange: e => { settings.proxy = e.target.value.trim().replace(/\/+$/, ""); saveSettings(); toast("Saved"); } });
   const oauthBox = el("div", { class: "flex", style: "flex-wrap:wrap;margin:8px 0" }, el("span", { class: "muted small" }, "Checking Ravelry sign-in…"));
   const drawOAuth = async () => {
-    if (!proxyBase()) { oauthBox.replaceChildren(el("span", { class: "muted small" }, "Enter the worker URL above, then connect Ravelry here.")); return; }
+    if (!proxyBase()) { setKids(oauthBox, el("span", { class: "muted small" }, "Enter the worker URL above, then connect Ravelry here.")); return; }
     const st = await ravOAuthStatus(true);
     oauthBox.replaceChildren();
     if (st.connected) oauthBox.append(el("span", { class: "pill active" }, "Ravelry: signed in as " + (st.username || "?")), el("button", { class: "btn small", onclick: async () => { await fetch(proxyBase() + "/oauth/logout").catch(() => {}); ravStatus = null; drawOAuth(); } }, "Disconnect"));
@@ -827,8 +1035,9 @@ VIEWS.data = main => {
     field("Lookup proxy URL", proxyIn), oauthBox, el("details", null, el("summary", { class: "muted small" }, "Without OAuth: Ravelry username (public data only)"), field("Ravelry username", ravUserIn)), el("div", { class: "flex", style: "margin-top:8px" }, testBtn), testOut, el("p", { class: "muted small", style: "margin-top:6px" }, "Stored only in this browser; never included in backups.")));
   main.append(el("div", { class: "card", style: "margin-top:12px" }, el("h3", null, "Tips"), el("ul", { class: "small", style: "margin:6px 0 0;padding-left:18px" },
     el("li", null, "On iPhone: open the site in Safari → Share → Add to Home Screen for a full-screen app with the counter."),
-    el("li", null, "Pattern text is parsed into rows when lines start with “Row 1:”, “Rnd 2:”, “Round 3”, or “Rows 4–6:”. Edit the pattern text any time to fix the parse."),
-    el("li", null, "PDF patterns are stored as files and opened in the built-in viewer; keep written instructions in the text box if you want the counter to show each row."),
+    el("li", null, "Pattern text is parsed into rows when lines start with “Row 1:”, “Rnd 2:”, “Round 3”, or “Rows 4–6:”. Each row keeps only its own instruction: ALL-CAPS lines (BELL, HOLLY LEAF (MAKE TWO)) become section headings, prose before a section’s first row becomes that row’s lead-in, prose after a row stays with that row, and everything else — materials, gauge, assembly — lands in Pattern notes instead of the counter. Edit the pattern text any time to fix the parse."),
+    el("li", null, "Blank fields are filled from the pattern text: the title (the first heading that isn't YARN, HOOK, NOTIONS…), designer, hook size and yarn weight. Yarns, colorways and notions are listed under Materials on the pattern page, ready to add to the stash or supplies with one tap. Anything you typed yourself is never overwritten."),
+    el("li", null, "PDF patterns: on import the app reads the PDF's text and pre-fills the instructions so the counter can follow each row (review it — layouts vary). For PDFs already saved, open the pattern and press “Extract rows”. Scanned-image PDFs have no text to read."),
     el("li", null, "Keyboard in the counter: Space or → adds a row, ← removes one, Z undoes."))));
   main.append(el("div", { class: "card", style: "margin-top:12px;border-color:var(--danger)" }, el("h3", { style: "color:var(--danger)" }, "Danger zone"), el("p", { class: "small" }, "Erase everything stored in this browser — projects, patterns, yarn, supplies, and attached files."),
     el("button", { class: "btn danger", onclick: async () => { if (await confirmDlg("Erase ALL data in this browser? Export a backup first if you want to keep anything.", "Erase everything")) { await idb.clear().catch(() => {}); data = blankData(); lastSerialized = null; localStorage.removeItem(DATA_KEY); markDirty(); go("projects"); toast("All data erased"); } } }, "Erase all data")));
@@ -865,6 +1074,7 @@ async function importData(file) {
 /* ========== boot ========== */
 loadData();
 if (settings.upcProxy && !settings.proxy) { settings.proxy = settings.upcProxy.replace(/\/+$/, ""); delete settings.upcProxy; saveSettings(); }
+for (const p of data.patterns) if (p.text && !p.rows?.[0]?.v) reparsePattern(p);
 try { lastSerialized = JSON.stringify({ ...data, sync: undefined }); } catch {}
 (() => { const h = location.hash.replace(/^#/, "").split("/"); if (h[0] && VIEWS[h[0]]) route = { tab: h[0], id: h[1] || null, sub: h[2] || null }; })();
 render();
@@ -909,7 +1119,7 @@ function ravPatternToApp(p) {
   else if (p.url) facts.push("Source: " + p.url);
   if (p.price && !p.free) facts.push("Price: " + p.price + " " + (p.currency || ""));
   pat.notes = [facts.join("\n"), p.notes_html ? stripHtml(p.notes_html) : (p.notes || "")].filter(Boolean).join("\n\n");
-  pat.text = ""; pat.rows = [];
+  pat.text = ""; pat.rows = []; pat.rowNotes = [];
   return pat;
 }
 function ravYarnToApp(yn) {
@@ -1024,6 +1234,89 @@ function ravImportStash(modal) {
       if (s.yarn?.id) { const y = await ravImportYarn(s.yarn.id, null, { silent: true, extra }); if (!y.notes && extra.notes) y.notes = extra.notes; }
       else { const y = Object.assign(newYarn(), { brand: s.yarn_company_name || "", name: s.yarn_name || s.name || "Stash yarn", weight: ravWeightToApp(s.yarn_weight?.name) }, extra); data.yarns.push(y); markDirty(); }
     });
+}
+/* ========== PDF text extraction (pdf.js, loaded on demand from cdnjs) ========== */
+const PDFJS_VER = "3.11.174";
+const PDFJS_BASE = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VER}/`;
+let pdfjsReady = null;
+function loadPdfJs() {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  if (pdfjsReady) return pdfjsReady;
+  pdfjsReady = new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = PDFJS_BASE + "pdf.min.js"; s.async = true;
+    s.onload = () => { if (!window.pdfjsLib) return rej(new Error("PDF reader failed to load")); window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + "pdf.worker.min.js"; res(window.pdfjsLib); };
+    s.onerror = () => { pdfjsReady = null; rej(new Error(navigator.onLine ? "Could not load the PDF reader" : "The PDF reader needs an internet connection the first time")); };
+    document.head.append(s);
+  });
+  return pdfjsReady;
+}
+// Rebuild reading-order lines from positioned text items.
+function pdfItemsToLines(items) {
+  const rows = [];
+  for (const it of items) {
+    if (!it.str && !it.hasEOL) continue;
+    const x = it.transform[4], y = it.transform[5], h = Math.abs(it.transform[3]) || it.height || 10;
+    let row = rows.find(r => Math.abs(r.y - y) < Math.max(2, h * 0.45));
+    if (!row) { row = { y, h, parts: [] }; rows.push(row); }
+    row.parts.push({ x, w: it.width || 0, s: it.str });
+  }
+  rows.sort((a, b) => b.y - a.y);
+  return rows.map(r => {
+    r.parts.sort((a, b) => a.x - b.x);
+    let out = "", end = null;
+    for (const p of r.parts) { if (end != null && p.x - end > r.h * 0.2 && !/\s$/.test(out) && !/^\s/.test(p.s)) out += " "; out += p.s; end = p.x + p.w; }
+    return out.replace(/\s+/g, " ").trim();
+  }).filter(Boolean);
+}
+// Join lines that are wrapped continuations of a "Row n:" instruction.
+function joinWrappedRows(lines) {
+  const out = [];
+  for (const line of lines) {
+    const prev = out[out.length - 1];
+    if (prev && ROW_RE.test(prev) && !ROW_RE.test(line) && !/[.)\]:]\s*$/.test(prev) && /^[a-z(0-9*,\[]/.test(line)) out[out.length - 1] = prev + " " + line;
+    else out.push(line);
+  }
+  return out;
+}
+async function extractPdfText(blob, onProgress) {
+  const lib = await loadPdfJs();
+  const doc = await lib.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
+  const pages = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    onProgress?.(i, doc.numPages);
+    const page = await doc.getPage(i);
+    const tc = await page.getTextContent();
+    pages.push(joinWrappedRows(pdfItemsToLines(tc.items)).join("\n"));
+  }
+  const text = pages.join("\n\n").replace(/­/g, "").replace(/[ \t]+\n/g, "\n").trim();
+  return { text, pages: doc.numPages, scanned: text.replace(/\s/g, "").length < 20 * doc.numPages };
+}
+async function extractFromAttachment(a, say) {
+  const rec = await idb.get(a.id); if (!rec) throw new Error("File not found in this browser's storage");
+  return extractPdfText(rec.blob, (i, n) => say?.(`Reading page ${i} of ${n}…`));
+}
+// Review extracted text before it becomes the pattern's instructions.
+function reviewExtractDlg(p, text) {
+  const ta = el("textarea", { style: "min-height:40vh;font-size:.9rem" }); ta.value = text;
+  const info = el("div", { class: "muted small", style: "margin-top:6px" });
+  const upd = () => { const n = parsePatternRows(ta.value).length; const found = metaSummary(parsePatternMeta(ta.value)); info.textContent = n ? `${n} rows detected` + (found ? " · " + found : "") + ` — edit freely; lines starting with “Row 1:”, “Rnd 2:”, “Rows 3-6:” become counter steps.` : "No rows detected yet. Rows are lines starting with “Row 1:”, “Rnd 2:”, “Round 3” or “Rows 4-6:”. Edit the text so each row starts that way."; };
+  ta.addEventListener("input", upd); upd();
+  const apply = mode => { p.text = mode === "append" && p.text ? p.text + "\n\n" + ta.value : ta.value; reparsePattern(p); markDirty(); flushSave(); render(); toast(p.rows.length ? `${p.rows.length} rows ready for the counter` : "Instructions saved"); };
+  const acts = [{ label: "Cancel" }, "spacer"];
+  if (p.text?.trim()) acts.push({ label: "Append", run: () => apply("append") });
+  acts.push({ label: p.text?.trim() ? "Replace instructions" : "Use as instructions", cls: "primary", run: () => apply("replace") });
+  openModal("Text from PDF", el("div", null, el("p", { class: "muted small", style: "margin-top:0" }, "PDF layouts vary, so check the rows before counting — leave the headings and prose in: they become section headings and notes, not counter steps."), ta, info), acts);
+}
+async function extractPatternPdf(p, a) {
+  const pdfs = (p.attachments || []).filter(x => x.type === "application/pdf");
+  a ||= pdfs[0]; if (!a) return toast("This pattern has no PDF attached");
+  toast("Reading PDF…", 8000);
+  try {
+    const r = await extractFromAttachment(a, m => toast(m, 8000));
+    if (r.scanned) return toast("This PDF is scanned images — there's no text to extract. Type or paste the rows instead.", 6000);
+    toast("Done", 800); reviewExtractDlg(p, r.text);
+  } catch (e) { toast("Could not read PDF: " + e.message, 5000); }
 }
 </script>
 </body>
