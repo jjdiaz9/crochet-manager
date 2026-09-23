@@ -8,7 +8,7 @@ Everything runs in the browser — no accounts, no server, no tracking. Your dat
 
 - **Projects** — status (planning / in progress / hibernating / finished / frogged), linked pattern, hook, yarn used, notes, progress photos.
 - **Row counter** — big tap targets, optional second counter for pattern repeats or stitches (with a target that auto-advances the row), undo history, jump to any row, keyboard shortcuts (Space/→ +1, ← −1, Z undo). Keeps the screen awake while counting.
-- **Patterns** — import PDFs, photos, `.txt`/`.md` files, paste written instructions, or save a link (Ravelry, Etsy, blogs). Written instructions are parsed into rows (`Row 1:`, `Rnd 2:`, `Rows 3-6:` …) so the counter can show the current and next step.
+- **Patterns** — import PDFs, photos, `.txt`/`.md` files, paste written instructions, or save a link (Ravelry, Etsy, blogs). **PDF text is extracted automatically** on import (or later via "Extract rows" on the pattern page) and parsed into rows (`Row 1:`, `Rnd 2:`, `Rows 3-6:` …) so the counter shows the current and next step. Multi-part patterns whose numbering restarts (e.g. amigurumi body, then wings) are stepped through in order. Scanned-image PDFs have no text to extract. The PDF reader (pdf.js) loads from cdnjs the first time it's needed.
 - **Yarn stash** — brand, line, colorway, weight, fiber, yardage, quantity, label photo. **Scan the UPC barcode** with the camera (Safari 17+ / Chrome); known yarns are matched from your own stash first, then Open Products Facts / Open Food Facts (free, no key), then UPCitemdb through the proxy below.
 - **Ravelry** — search and import crochet patterns (details, hook, weight, yardage, photo, download link), search yarns, and one-tap import of your Ravelry **library, queue, projects and stash**. Read-only; nothing is written to your Ravelry account.
 - **Supplies** — hooks (one-click "add a hook set"), stitch markers, safety eyes, stuffing, and so on, with quantities.
@@ -46,4 +46,4 @@ There is no build step. `index.html` contains all HTML, CSS and JavaScript. Edit
 
 ## Privacy
 
-Data lives in your browser's `localStorage` (records) and IndexedDB (files). Nothing is sent anywhere except the optional UPC lookup, which sends only the barcode number to UPCitemdb.
+Data lives in your browser's `localStorage` (records) and IndexedDB (files). PDFs are read locally in your browser (pdf.js is downloaded from cdnjs, your file is never uploaded). Network calls are limited to the optional UPC lookups and the Ravelry proxy you deploy yourself.
