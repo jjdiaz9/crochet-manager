@@ -1252,7 +1252,8 @@ function loadPdfJs() {
   return pdfjsReady;
 }
 // Rebuild reading-order lines from positioned text items.
-function pdfItemsToLines(items) {
+// Groups the raw text items of one page into lines, top to bottom.
+function pdfLinesFromItems(items) {
   const rows = [];
   for (const it of items) {
     if (!it.str && !it.hasEOL) continue;
@@ -1269,7 +1270,50 @@ function pdfItemsToLines(items) {
     return out.replace(/\s+/g, " ").trim();
   }).filter(Boolean);
 }
-// Join lines that are wrapped continuations of a "Row n:" instruction.
+// Finds the gutters of a multi-column page, so a two-column layout isn't read straight across.
+// Wide, full-width lines (titles, running headers) are ignored while measuring, then filed with
+// the first column. Returns null when the page is a single column.
+function pdfColumnRanges(items, width) {
+  const text = items.filter(it => String(it.str || "").trim());
+  if (!width || text.length < 25) return null;
+  const BINS = 120, bin = width / BINS, hits = new Array(BINS).fill(0);
+  for (const it of text) {
+    const w = it.width || 0; if (w > width * 0.45) continue;
+    const a = Math.max(0, Math.floor(it.transform[4] / bin)), b = Math.min(BINS - 1, Math.floor((it.transform[4] + w) / bin));
+    for (let i = a; i <= b; i++) hits[i]++;
+  }
+  const max = Math.max(...hits); if (!max) return null;
+  const thr = Math.max(1, max * 0.04), minGut = Math.round(BINS * 0.03);
+  const lo = Math.round(BINS * 0.18), hi = Math.round(BINS * 0.82);
+  const cuts = []; let start = null;
+  for (let i = lo; i <= hi; i++) {
+    if (hits[i] <= thr) { if (start === null) start = i; }
+    else { if (start !== null && i - start >= minGut) cuts.push((start + i) / 2 * bin); start = null; }
+  }
+  if (start !== null && hi - start >= minGut) cuts.push((start + hi) / 2 * bin);
+  if (!cuts.length) return null;
+  const bounds = [0, ...cuts, width];
+  const cols = bounds.slice(0, -1).map((a, i) => [a, bounds[i + 1]]);
+  // Only believe it if every column actually holds a fair share of the text.
+  const counts = cols.map(([a, b]) => text.filter(it => { const w = it.width || 0; const mid = it.transform[4] + w / 2; return w <= width * 0.45 && mid >= a && mid < b; }).length);
+  if (counts.some(c => c < 5 || c < text.length * 0.12)) return null;
+  return cols;
+}
+function pdfItemsToLines(items, width) {
+  const cols = pdfColumnRanges(items, width);
+  if (!cols || cols.length < 2) return pdfLinesFromItems(items);
+  const buckets = cols.map(() => []);
+  const cuts = cols.slice(1).map(c => c[0]);
+  for (const it of items) {
+    const x0 = it.transform[4], w = it.width || 0, x1 = x0 + w, mid = x0 + w / 2;
+    // Anything straddling a gutter (a centred title, a running header) is full-width:
+    // file it with the first column so it stays at the top of the page.
+    let ci = cuts.some(c => x0 < c && x1 > c) ? 0 : cols.findIndex(([a, b]) => mid >= a && mid < b);
+    if (ci < 0) ci = 0;
+    buckets[ci].push(it);
+  }
+  return buckets.flatMap(b => pdfLinesFromItems(b));
+}
 function joinWrappedRows(lines) {
   const out = [];
   for (const line of lines) {
@@ -1287,7 +1331,8 @@ async function extractPdfText(blob, onProgress) {
     onProgress?.(i, doc.numPages);
     const page = await doc.getPage(i);
     const tc = await page.getTextContent();
-    pages.push(joinWrappedRows(pdfItemsToLines(tc.items)).join("\n"));
+    const vw = (() => { try { return page.getViewport({ scale: 1 }).width; } catch { return 0; } })();
+    pages.push(joinWrappedRows(pdfItemsToLines(tc.items, vw)).join("\n"));
   }
   const text = pages.join("\n\n").replace(/­/g, "").replace(/[ \t]+\n/g, "\n").trim();
   return { text, pages: doc.numPages, scanned: text.replace(/\s/g, "").length < 20 * doc.numPages };
