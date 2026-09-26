@@ -33,6 +33,12 @@ header.top{position:sticky;top:0;z-index:20;background:var(--bg2);border-bottom:
 header.top .logo{width:28px;height:28px;border-radius:50%;background:var(--olive);display:grid;place-items:center;flex:none}
 header.top .logo i{width:14px;height:14px;border:3px solid var(--bg2);border-radius:50%}
 header.top h1{font-size:1.1rem;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.syncchip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:4px 10px;font-size:.8rem;color:var(--muted);display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap}
+.syncchip[hidden]{display:none}
+.syncchip .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}.syncchip .dot.warn{background:#C08A2B}.syncchip .dot.crit{background:var(--danger)}.syncchip .dot.busy{background:var(--accent2)}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}.cmp>div{border:1px solid var(--line);border-radius:10px;padding:10px;font-size:.9rem}
+.grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0 12px}
+.banner{background:var(--soft);border-radius:10px;padding:8px 12px;margin:8px 0;font-size:.86rem}
 nav.tabs{display:flex;gap:2px;background:var(--soft);padding:3px;border-radius:999px}
 nav.tabs button{border:0;background:transparent;padding:6px 12px;border-radius:999px;color:var(--muted);cursor:pointer;white-space:nowrap}
 nav.tabs button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
@@ -146,6 +152,7 @@ label.f span{display:block;font-size:.82rem;color:var(--muted);margin-bottom:4px
 <header class="top">
   <div class="logo"><i></i></div>
   <h1 id="title">Crochet Manager</h1>
+  <button class="syncchip" id="syncChip" hidden><span class="dot"></span><span>Synced</span></button>
   <nav class="tabs" id="tabs"></nav>
 </header>
 <main id="main"></main>
@@ -208,7 +215,7 @@ function loadData() {
   data.sync = Object.assign({ rev: 0, modified: "", device: "" }, data.sync || {});
 }
 let lastSerialized = null, saveTimer = null;
-function markDirty() { clearTimeout(saveTimer); saveTimer = setTimeout(flushSave, 300); }
+function markDirty() { clearTimeout(saveTimer); saveTimer = setTimeout(flushSave, 300); if (typeof scheduleAutoPush === "function") scheduleAutoPush(); }
 function flushSave() {
   clearTimeout(saveTimer); saveTimer = null;
   if (document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) document.activeElement.dispatchEvent(new Event("change", { bubbles: true }));
@@ -1002,11 +1009,12 @@ VIEWS.data = main => {
   const store = el("div", { class: "muted small" }, "Calculating storage…");
   idb.all().then(all => { const b = all.reduce((s, r) => s + (r.size || r.blob?.size || 0), 0); store.textContent = `${all.length} attached file(s), ${(b / 1048576).toFixed(1)} MB in this browser's storage · data rev ${data.sync.rev}${data.sync.modified ? ", last saved " + new Date(data.sync.modified).toLocaleString() : ""}`; }).catch(() => store.textContent = "Attachments unavailable in this browser.");
   const withFiles = el("input", { type: "checkbox", style: "width:auto", checked: true });
-  main.append(el("div", { class: "card" }, el("h3", null, "Backup"), el("p", { class: "small" }, "Everything lives in this browser on this device. Export a backup regularly and keep it in iCloud Drive, Dropbox, or the GitHub repo — then import it on another device to move your data over."),
+  main.append(el("div", { class: "card" }, el("h3", null, "Backup"), el("p", { class: "small" }, "Everything lives in this browser on this device. Export a backup regularly, or turn on GitHub sync below to keep every device up to date automatically."),
     el("p", { class: "small" }, counts), store,
     el("label", { class: "flex small", style: "margin:10px 0" }, withFiles, "Include PDFs and photos (bigger file)"),
     el("div", { class: "flex", style: "flex-wrap:wrap" }, el("button", { class: "btn primary", onclick: () => exportData(withFiles.checked) }, "⬇ Export backup"),
       el("button", { class: "btn", onclick: () => importFileIn.click() }, "⬆ Import backup"), importFileIn)));
+  main.append(syncCard());
   const proxyIn = el("input", { type: "url", value: settings.proxy || "", placeholder: "https://your-worker.workers.dev", autocomplete: "off", onchange: e => { settings.proxy = e.target.value.trim().replace(/\/+$/, ""); saveSettings(); toast("Saved"); } });
   const oauthBox = el("div", { class: "flex", style: "flex-wrap:wrap;margin:8px 0" }, el("span", { class: "muted small" }, "Checking Ravelry sign-in…"));
   const drawOAuth = async () => {
@@ -1040,7 +1048,7 @@ VIEWS.data = main => {
     el("li", null, "PDF patterns: on import the app reads the PDF's text and pre-fills the instructions so the counter can follow each row (review it — layouts vary). For PDFs already saved, open the pattern and press “Extract rows”. Scanned-image PDFs have no text to read."),
     el("li", null, "Keyboard in the counter: Space or → adds a row, ← removes one, Z undoes."))));
   main.append(el("div", { class: "card", style: "margin-top:12px;border-color:var(--danger)" }, el("h3", { style: "color:var(--danger)" }, "Danger zone"), el("p", { class: "small" }, "Erase everything stored in this browser — projects, patterns, yarn, supplies, and attached files."),
-    el("button", { class: "btn danger", onclick: async () => { if (await confirmDlg("Erase ALL data in this browser? Export a backup first if you want to keep anything.", "Erase everything")) { await idb.clear().catch(() => {}); data = blankData(); lastSerialized = null; localStorage.removeItem(DATA_KEY); markDirty(); go("projects"); toast("All data erased"); } } }, "Erase all data")));
+    el("button", { class: "btn danger", onclick: async () => { if (await confirmDlg("Erase ALL data in this browser? Export a backup first if you want to keep anything.", "Erase everything")) { await idb.clear().catch(() => {}); data = blankData(); lastSerialized = null; localStorage.removeItem(DATA_KEY); syncCfg.baseRev = 0; saveSyncCfg(); markDirty(); go("projects"); toast("All data erased"); } } }, "Erase all data")));
   main.append(el("p", { class: "muted small", style: "margin-top:16px;text-align:center" }, "Crochet Manager · single-file app · no accounts, no tracking"));
 };
 const importFileIn = el("input", { type: "file", accept: ".json,application/json", style: "display:none", onchange: e => { const f = e.target.files[0]; if (f) importData(f); e.target.value = ""; } });
@@ -1071,6 +1079,207 @@ async function importData(file) {
   } }]);
 }
 
+/* ========== sync with a private GitHub repo ==========
+   The data object is one JSON file (default crochet-manager/data.json). PDFs and photos
+   are write-once files under crochet-manager/files/<id>, uploaded/downloaded as needed.
+   Sync config and the token live in their own keys: never exported, never synced. */
+const SYNC_KEY = "crochet-sync-v1", TOKEN_KEY = "crochet-token-v1";
+let syncCfg = {};
+try { syncCfg = JSON.parse(localStorage.getItem(SYNC_KEY) || "{}") || {}; } catch { syncCfg = {}; }
+syncCfg = Object.assign({ owner: "", repo: "", branch: "main", path: "crochet-manager/data.json", files: true, auto: true, baseRev: 0, lastSync: "" }, syncCfg);
+function saveSyncCfg() { try { localStorage.setItem(SYNC_KEY, JSON.stringify(syncCfg)); } catch {} }
+const getToken = () => { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; } };
+const syncConfigured = () => !!(syncCfg.owner && syncCfg.repo && getToken());
+const localDirty = () => (data.sync.rev || 0) > (syncCfg.baseRev || 0);
+const b64encode = s => { let b = ""; new TextEncoder().encode(s).forEach(c => b += String.fromCharCode(c)); return btoa(b); };
+const b64decode = s => new TextDecoder().decode(Uint8Array.from(atob(String(s).replace(/\s/g, "")), c => c.charCodeAt(0)));
+const filesDir = () => (syncCfg.path.includes("/") ? syncCfg.path.replace(/\/[^/]*$/, "") + "/" : "") + "files";
+const contentPath = path => "/contents/" + path.split("/").map(encodeURIComponent).join("/");
+async function gh(method, path, body, raw) {
+  const r = await fetch(`https://api.github.com/repos/${encodeURIComponent(syncCfg.owner)}/${encodeURIComponent(syncCfg.repo)}${path}`, { method, cache: "no-store",
+    headers: Object.assign({ Authorization: "Bearer " + getToken(), Accept: raw ? "application/vnd.github.raw" : "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" }, body ? { "Content-Type": "application/json" } : {}),
+    body: body ? JSON.stringify(body) : undefined });
+  let j = null, blob = null;
+  if (raw && r.ok) blob = await r.blob(); else { try { j = await r.json(); } catch {} }
+  return { status: r.status, ok: r.ok, j, blob, headers: r.headers };
+}
+function httpError(r, doing) {
+  const m = r.j?.message ? ` GitHub says: “${r.j.message}”.` : "";
+  if (r.status === 401) return "GitHub rejected the token. It may be expired, revoked, or mistyped. Paste a new one and save.";
+  if (r.status === 403) { if (r.headers?.get("x-ratelimit-remaining") === "0") return "GitHub rate limit reached. Try again in a few minutes."; return `The token can't ${doing}. Give it Contents read/write access to ${syncCfg.owner}/${syncCfg.repo}.${m}`; }
+  if (r.status === 409) return "The file changed on GitHub while saving. Sync again.";
+  if (r.status === 422) return `GitHub refused the request, usually a wrong branch or file path.${m}`;
+  return `GitHub returned ${r.status} while trying to ${doing}.${m}`;
+}
+async function explain404() {
+  const repo = await gh("GET", "");
+  if (repo.status === 404) return `Can't see ${syncCfg.owner}/${syncCfg.repo}. Check the owner and repo names, and that the token has access to that repository (private repos look missing to tokens without access).`;
+  if (!repo.ok) return httpError(repo, "read the repository");
+  const br = await gh("GET", "/branches/" + encodeURIComponent(syncCfg.branch));
+  if (br.status === 404) { const all = await gh("GET", "/branches?per_page=20"); const names = all.ok && Array.isArray(all.j) ? all.j.map(b => b.name).join(", ") : ""; return `Branch “${syncCfg.branch}” doesn't exist in ${syncCfg.repo}.${names ? " Branches: " + names + "." : ""}`; }
+  return null; // repo and branch are fine: the file just doesn't exist yet
+}
+async function readRemote() {
+  const r = await gh("GET", contentPath(syncCfg.path) + "?ref=" + encodeURIComponent(syncCfg.branch));
+  if (r.status === 200) {
+    let txt = r.j.content;
+    if (r.j.encoding === "none" || !txt) { // over 1 MB: the JSON response has no content, fetch it raw
+      const raw = await gh("GET", contentPath(syncCfg.path) + "?ref=" + encodeURIComponent(syncCfg.branch), null, true);
+      if (!raw.ok) throw new Error(httpError(raw, "read " + syncCfg.path));
+      txt = await raw.blob.text();
+    } else txt = b64decode(txt);
+    let d; try { d = JSON.parse(txt); } catch { throw new Error("The GitHub file is not valid JSON. Check " + syncCfg.path + "."); }
+    if (!d || d.app !== APP_ID) throw new Error(syncCfg.path + " on GitHub is not a Crochet Manager data file.");
+    return { sha: r.j.sha, data: d };
+  }
+  if (r.status === 404) { const why = await explain404(); if (why) throw new Error(why); return { missing: true }; }
+  throw new Error(httpError(r, "read " + syncCfg.path));
+}
+function attachmentIds(d) {
+  const ids = new Set();
+  for (const k of ["patterns", "projects"]) for (const o of d[k] || []) for (const a of o.attachments || []) if (a?.id) ids.add(a.id);
+  for (const y of d.yarns || []) if (y.image) ids.add(y.image);
+  return ids;
+}
+async function remoteFileIds() {
+  const r = await gh("GET", contentPath(filesDir()) + "?ref=" + encodeURIComponent(syncCfg.branch));
+  if (r.status === 404) return new Set();
+  if (!r.ok) throw new Error(httpError(r, "list " + filesDir()));
+  return new Set((Array.isArray(r.j) ? r.j : []).map(f => f.name));
+}
+async function pushFiles() {
+  if (!syncCfg.files) return 0;
+  const have = await remoteFileIds(); let n = 0;
+  for (const id of attachmentIds(data)) {
+    if (have.has(id)) continue;
+    const rec = await idb.get(id).catch(() => null); if (!rec?.blob) continue;
+    const r = await gh("PUT", contentPath(filesDir() + "/" + id), { message: `crochet: add ${rec.name || id} from ${deviceName()}`, content: await blobToB64(rec.blob), branch: syncCfg.branch });
+    if (!r.ok && r.status !== 422) throw new Error(httpError(r, "upload " + (rec.name || id))); // 422 = already there
+    n++;
+  }
+  return n;
+}
+async function pullFiles() {
+  if (!syncCfg.files) return 0;
+  const meta = new Map();
+  for (const k of ["patterns", "projects"]) for (const o of data[k] || []) for (const a of o.attachments || []) if (a?.id) meta.set(a.id, a);
+  let n = 0, missing = 0;
+  for (const id of attachmentIds(data)) {
+    if (await idb.get(id).catch(() => null)) continue;
+    const r = await gh("GET", contentPath(filesDir() + "/" + id) + "?ref=" + encodeURIComponent(syncCfg.branch), null, true);
+    if (r.status === 404) { missing++; continue; } // not uploaded yet by the device that has it
+    if (!r.ok) throw new Error(httpError(r, "download a file"));
+    const a = meta.get(id) || { name: "photo.jpg", type: "image/jpeg" };
+    await idb.put({ id, name: a.name, type: a.type, size: r.blob.size, added: new Date().toISOString(), blob: new Blob([r.blob], { type: a.type }) });
+    n++;
+  }
+  if (missing) console.warn(missing + " attachment(s) not on GitHub yet");
+  return n;
+}
+function adopt(d) {
+  data = Object.assign(blankData(), d);
+  for (const k of ["projects", "patterns", "yarns", "supplies"]) if (!Array.isArray(data[k])) data[k] = [];
+  data.sync = Object.assign({ rev: 0, modified: "", device: "" }, data.sync || {});
+  try { localStorage.setItem(DATA_KEY, JSON.stringify(data)); } catch {}
+  lastSerialized = JSON.stringify({ ...data, sync: undefined });
+  syncCfg.baseRev = data.sync.rev || 0; syncCfg.lastSync = new Date().toISOString(); saveSyncCfg();
+  urlCache.clear(); render();
+}
+let syncBusy = false, syncState = "", syncNote = "";
+function syncMsg(m, tone, quiet) { syncNote = m; syncState = tone || ""; const e = $("#syncMsg"); if (e) { e.textContent = m; e.style.color = tone === "crit" ? "var(--danger)" : ""; } updateSyncChip(); if (!quiet) toast(m, tone === "crit" ? 6000 : 2600); }
+function updateSyncChip() {
+  const c = $("#syncChip"); if (!c) return;
+  c.hidden = !syncConfigured(); if (c.hidden) return;
+  const dot = c.querySelector(".dot"), tx = c.querySelector("span:last-child");
+  let t = "Synced", k = "";
+  if (syncBusy) { t = "Syncing…"; k = "busy"; }
+  else if (syncState === "crit") { t = "Sync problem"; k = "crit"; }
+  else if (localDirty()) { t = "Not synced"; k = "warn"; }
+  else if (syncCfg.lastSync) t = "Synced " + new Date(syncCfg.lastSync).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  dot.className = "dot " + k; tx.textContent = t; c.title = syncNote || "Sync with GitHub now";
+}
+// One button does both: pull what's newer, push what's newer, stop and ask if both changed.
+async function syncNow(opts = {}) {
+  if (syncBusy) return;
+  if (!syncConfigured()) { if (!opts.quiet) syncMsg("Set up GitHub sync under Data first.", "crit"); return; }
+  syncBusy = true; flushSave(); updateSyncChip();
+  try {
+    const rm = await readRemote();
+    const rRev = rm.missing ? 0 : (rm.data.sync?.rev || 0);
+    if (!rm.missing && rRev > (syncCfg.baseRev || 0)) {
+      if (localDirty()) { syncBusy = false; conflictDlg(rm); return; }
+      adopt(rm.data); const n = await pullFiles();
+      syncMsg("Pulled the latest from GitHub" + (n ? ` (${n} file${n > 1 ? "s" : ""})` : "") + ".", "ok", opts.quiet); if (n) render(); return;
+    }
+    if (rm.missing || localDirty()) { await pushData(rm); const n = await pushFiles(); syncMsg(`Saved revision ${data.sync.rev} to GitHub` + (n ? ` with ${n} file${n > 1 ? "s" : ""}` : "") + ".", "ok", opts.quiet); return; }
+    const up = await pushFiles(), down = await pullFiles(); if (down) render();
+    syncCfg.lastSync = new Date().toISOString(); saveSyncCfg();
+    syncMsg("Already up to date" + (up + down ? ` (${up + down} file${up + down > 1 ? "s" : ""} synced)` : "") + ".", "ok", opts.quiet);
+  } catch (e) { syncMsg(e.message || String(e), "crit", opts.quiet && !opts.loud); }
+  finally { syncBusy = false; updateSyncChip(); }
+}
+async function pushData(rm, force) {
+  const rRev = rm.missing ? 0 : (rm.data.sync?.rev || 0);
+  // the pushed rev must be above whatever GitHub holds, or other devices would never pull it
+  if (force || (data.sync.rev || 0) <= rRev) { data.sync.rev = Math.max(data.sync.rev || 0, rRev) + 1; data.sync.modified = new Date().toISOString(); data.sync.device = deviceName(); try { localStorage.setItem(DATA_KEY, JSON.stringify(data)); } catch {} }
+  const body = { message: `crochet: update from ${deviceName()} (rev ${data.sync.rev})`, content: b64encode(JSON.stringify(data)), branch: syncCfg.branch };
+  if (!rm.missing) body.sha = rm.sha;
+  let r = await gh("PUT", contentPath(syncCfg.path), body);
+  if (!r.ok && !body.sha && (r.status === 422 || r.status === 409)) { // created elsewhere meanwhile: re-read once
+    const again = await readRemote();
+    if (!again.missing) { if ((again.data.sync?.rev || 0) > (syncCfg.baseRev || 0)) { syncBusy = false; conflictDlg(again); throw new Error("Both copies changed — choose one to keep."); } body.sha = again.sha; r = await gh("PUT", contentPath(syncCfg.path), body); }
+  }
+  if (!r.ok) throw new Error(httpError(r, "write " + syncCfg.path));
+  syncCfg.baseRev = data.sync.rev; syncCfg.lastSync = new Date().toISOString(); saveSyncCfg();
+}
+function downloadJSON(name, obj) { const a = el("a", { href: URL.createObjectURL(new Blob([JSON.stringify(obj)], { type: "application/json" })), download: name }); document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); }
+function conflictDlg(rm) {
+  if ($(".modal-bg .conflict")) return;
+  const summary = d => `${(d.projects || []).length} projects, ${(d.patterns || []).length} patterns, ${(d.yarns || []).length} yarns, ${(d.supplies || []).length} supplies`;
+  const side = (h, d) => el("div", null, el("b", null, h), el("br"), d.sync?.device || "unknown device", el("br"), d.sync?.modified ? new Date(d.sync.modified).toLocaleString() : "", el("br"), summary(d));
+  syncMsg("Both copies changed — choose one to keep.", "crit", true);
+  openModal("Both copies changed", el("div", { class: "conflict" }, el("p", null, "Your crochet data was edited on this device and on another one since the last sync. Choose which copy to keep; the other is downloaded as a backup file first."),
+    el("div", { class: "cmp" }, side("This device", data), side("GitHub", rm.data))), [
+    { label: "Decide later" }, "spacer",
+    { label: "Use GitHub copy", run: async () => { downloadJSON(`crochet-this-device-${today()}.json`, data); adopt(rm.data); syncBusy = true; try { await pullFiles(); render(); syncMsg("Using the GitHub copy. This device's version was downloaded as a backup.", "ok"); } catch (e) { syncMsg(e.message, "crit"); } finally { syncBusy = false; updateSyncChip(); } } },
+    { label: "Keep this device's copy", cls: "primary", run: async () => { downloadJSON(`crochet-github-${today()}.json`, rm.data); syncBusy = true; updateSyncChip(); try { await pushData(rm, true); await pushFiles(); syncMsg(`Saved revision ${data.sync.rev} to GitHub. The GitHub version was downloaded as a backup.`, "ok"); } catch (e) { syncMsg(e.message, "crit"); } finally { syncBusy = false; updateSyncChip(); } } }]);
+}
+// Auto-sync: pull when the app opens or comes back to the front, push a minute after the last edit
+// and when the app is put away. Every push is a commit in the repo.
+let autoTimer = null;
+function scheduleAutoPush() { updateSyncChip(); if (!syncCfg.auto || !syncConfigured()) return; clearTimeout(autoTimer); autoTimer = setTimeout(() => syncNow({ quiet: true }), 60000); }
+document.addEventListener("visibilitychange", () => {
+  if (!syncCfg.auto || !syncConfigured()) return;
+  if (document.visibilityState === "hidden") { if (localDirty()) { clearTimeout(autoTimer); syncNow({ quiet: true }); } }
+  else if (!syncCfg.lastSync || Date.now() - new Date(syncCfg.lastSync) > 60000) syncNow({ quiet: true });
+});
+$("#syncChip").addEventListener("click", () => syncNow({ loud: true }));
+function syncCard() {
+  const onPages = /\.github\.io$/i.test(location.hostname), hasTok = !!getToken();
+  const f = { owner: syncCfg.owner || (onPages ? location.hostname.split(".")[0] : ""), repo: syncCfg.repo, branch: syncCfg.branch, path: syncCfg.path, tok: "" };
+  const files = el("input", { type: "checkbox", style: "width:auto", checked: syncCfg.files }), auto = el("input", { type: "checkbox", style: "width:auto", checked: syncCfg.auto });
+  const save = () => {
+    flushSave();
+    syncCfg.owner = f.owner.trim(); syncCfg.repo = f.repo.trim().replace(/^.*\//, ""); syncCfg.branch = f.branch.trim() || "main"; syncCfg.path = (f.path.trim() || "crochet-manager/data.json").replace(/^\/+/, "");
+    syncCfg.files = files.checked; syncCfg.auto = auto.checked; saveSyncCfg();
+    if (f.tok.trim()) try { localStorage.setItem(TOKEN_KEY, f.tok.trim()); } catch {}
+    render(); if (syncConfigured()) syncNow({ loud: true }); else toast("Saved");
+  };
+  return el("div", { class: "card", style: "margin-top:12px" }, el("h3", null, "Sync with a private GitHub repo"),
+    el("p", { class: "small" }, "Keeps your projects, patterns, yarn and supplies in one JSON file in a private GitHub repository so your iPhone, iPad and Mac all see the same data. PDFs and photos are stored next to it as separate files. If the same data was changed on two devices before they synced, you're asked which copy to keep — nothing is merged or overwritten silently."),
+    onPages ? el("div", { class: "banner" }, "This app runs on a github.io address, which every app you publish under the same username shares. Use a fine-grained token limited to the data repository with only Contents read/write.") : null,
+    el("div", { class: "grid2" }, field("Owner", inp(f, "owner", { placeholder: "github-username" })), field("Private repo", inp(f, "repo", { placeholder: "private-data-repo" })),
+      field("Branch", inp(f, "branch")), field("File path", inp(f, "path"))),
+    field("Access token" + (hasTok ? " (saved on this device)" : ""), Object.assign(inp(f, "tok", { type: "password", placeholder: hasTok ? "•••••••• leave blank to keep" : "github_pat_…" }), { autocomplete: "off" })),
+    el("label", { class: "flex small", style: "margin:8px 0" }, files, "Also sync PDFs and photos"),
+    el("label", { class: "flex small", style: "margin:8px 0" }, auto, "Sync automatically — when the app opens and a minute after you stop editing (each save is a commit)"),
+    el("div", { class: "flex", style: "flex-wrap:wrap" }, el("button", { class: "btn", onclick: save }, "Save settings"),
+      el("button", { class: "btn primary", onclick: () => syncNow({ loud: true }) }, "⟳ Sync now"),
+      hasTok ? el("button", { class: "btn", onclick: () => { try { localStorage.removeItem(TOKEN_KEY); } catch {} render(); toast("Token removed from this device"); } }, "Forget token") : null),
+    el("p", { class: "muted small", id: "syncMsg", style: "margin-top:8px" }, syncNote || (syncCfg.lastSync ? "Last synced " + new Date(syncCfg.lastSync).toLocaleString() : "Not synced yet.")),
+    el("p", { class: "muted small" }, `This device: ${deviceName()} · local revision ${data.sync.rev || 0} · last synced revision ${syncCfg.baseRev || 0}`));
+}
+
 /* ========== boot ========== */
 loadData();
 if (settings.upcProxy && !settings.proxy) { settings.proxy = settings.upcProxy.replace(/\/+$/, ""); delete settings.upcProxy; saveSettings(); }
@@ -1078,6 +1287,8 @@ for (const p of data.patterns) if (p.text && !p.rows?.[0]?.v) reparsePattern(p);
 try { lastSerialized = JSON.stringify({ ...data, sync: undefined }); } catch {}
 (() => { const h = location.hash.replace(/^#/, "").split("/"); if (h[0] && VIEWS[h[0]]) route = { tab: h[0], id: h[1] || null, sub: h[2] || null }; })();
 render();
+updateSyncChip();
+if (syncCfg.auto && syncConfigured()) syncNow({ quiet: true });
 if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
 /* ========== Ravelry (via the lookup proxy worker, which holds the API credentials) ========== */
 const proxyBase = () => (settings.proxy || "").trim().replace(/\/+$/, "");

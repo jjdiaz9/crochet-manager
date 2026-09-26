@@ -12,6 +12,7 @@ Everything runs in the browser — no accounts, no server, no tracking. Your dat
 - **Yarn stash** — brand, line, colorway, weight, fiber, yardage, quantity, label photo. **Scan the UPC barcode** with the camera (Safari 17+ / Chrome); known yarns are matched from your own stash first, then Open Products Facts / Open Food Facts (free, no key), then UPCitemdb through the proxy below.
 - **Ravelry** — search and import crochet patterns (details, hook, weight, yardage, photo, download link), search yarns, and one-tap import of your Ravelry **library, queue, projects and stash**. Read-only; nothing is written to your Ravelry account.
 - **Supplies** — hooks (one-click "add a hook set"), stitch markers, safety eyes, stuffing, and so on, with quantities.
+- **Sync** — keep every device on the same data through a JSON file in a private GitHub repo (PDFs and photos included). See below.
 - **Backup** — export/import JSON, optionally including attached PDFs and photos.
 
 ## Use it
@@ -40,10 +41,24 @@ Ravelry access comes in two layers, both created at ravelry.com/pro/developer:
 
 Optional: `npx wrangler secret put UPCITEMDB_KEY` for a paid UPCitemdb plan. The worker only accepts GET requests from the app's origin, a whitelist of read-only Ravelry paths, and Ravelry/UPCitemdb image hosts for the photo pass-through.
 
+## Sync across devices (private GitHub repo)
+
+Data → **Sync with a private GitHub repo**. Your data is saved as `crochet-manager/data.json` in a private repo you own. Attached PDFs and photos go under `crochet-manager/files/`. This repo only holds the app, never your data.
+
+1. Create a **fine-grained personal access token** at github.com → Settings → Developer settings → Fine-grained tokens. Set *Repository access* → *Only select repositories* → your private data repo, and *Permissions* → *Contents: Read and write*. Nothing else is needed.
+2. In the app, enter the owner, the private repo name, and the token, then **Save settings**. The first save syncs right away.
+3. Do the same on each device. The first sync on a device that already has its own data asks which copy to keep.
+
+**Sync now** (or the status chip in the header) pulls if GitHub is newer and pushes if this device is newer. If both changed since the last sync, it stops and asks which copy to keep, and downloads the other copy as a backup file first. It never merges silently.
+
+**Sync automatically** (on by default) pulls when the app opens or comes back to the front. It pushes a minute after you stop editing and when you leave the app. Every push is a commit in the data repo; turn this off to sync only when you press the button.
+
+The token and sync settings stay in this browser only. They are never included in the data file or in exported backups. Every app published under the same `github.io` address can read what this page stores, so keep the token limited to the one data repo.
+
 ## Development
 
 There is no build step. `index.html` contains all HTML, CSS and JavaScript. Edit it, refresh, done.
 
 ## Privacy
 
-Data lives in your browser's `localStorage` (records) and IndexedDB (files). PDFs are read locally in your browser (pdf.js is downloaded from cdnjs, your file is never uploaded). Network calls are limited to the optional UPC lookups and the Ravelry proxy you deploy yourself.
+Data lives in your browser's `localStorage` (records) and IndexedDB (files). PDFs are read locally in your browser (pdf.js is downloaded from cdnjs, your file is never uploaded). Network calls are limited to the optional UPC lookups, the Ravelry proxy you deploy yourself, and GitHub if you turn on sync.
