@@ -213,6 +213,7 @@ function loadData() {
   } catch (e) { console.warn("load failed", e); }
   for (const k of ["projects", "patterns", "yarns", "supplies"]) if (!Array.isArray(data[k])) data[k] = [];
   data.sync = Object.assign({ rev: 0, modified: "", device: "" }, data.sync || {});
+  data.projects.forEach(normProject);
 }
 let lastSerialized = null, saveTimer = null;
 function markDirty() { clearTimeout(saveTimer); saveTimer = setTimeout(flushSave, 300); if (typeof scheduleAutoPush === "function") scheduleAutoPush(); }
@@ -598,13 +599,13 @@ function patternDetail(main, p) {
   if (!p) { go("patterns"); return; }
   main.append(el("div", { class: "detail-head" }, el("button", { class: "btn small", onclick: () => go("patterns") }, "‹ Patterns"), el("h2", null, p.name || "Untitled"),
     el("button", { class: "btn small", onclick: () => editPatternDlg(p) }, "Edit"),
-    el("button", { class: "btn small danger", onclick: async () => { if (await confirmDlg(`Delete "${p.name}"? Projects using it keep their counters but lose the row text.`)) { for (const a of p.attachments || []) idb.del(a.id).catch(() => {}); removeById(data.patterns, p.id); for (const pr of data.projects) if (pr.patternId === p.id) pr.patternId = ""; markDirty(); go("patterns"); } } }, "Delete")));
+    el("button", { class: "btn small danger", onclick: async () => { if (await confirmDlg(`Delete "${p.name}"? Projects using it keep their counters but lose the row text.`)) { for (const a of p.attachments || []) idb.del(a.id).catch(() => {}); removeById(data.patterns, p.id); for (const pr of data.projects) unlinkPattern(pr, p.id); markDirty(); go("patterns"); } } }, "Delete")));
   const dl = el("dl", { class: "kv" });
   const kv = (k, v) => { if (v) dl.append(el("dt", null, k), el("dd", null, v)); };
   kv("Designer", p.designer); kv("Hook", p.hook); kv("Yarn weight", p.weight); kv("Tags", p.tags); kv("Added", fmtDate(p.created));
   if (p.url) dl.append(el("dt", null, "Link"), el("dd", null, el("a", { href: p.url, target: "_blank", rel: "noopener" }, p.url.replace(/^https?:\/\//, "").slice(0, 60))));
   main.append(el("div", { class: "card" }, dl, p.notes ? el("div", { class: "notes", style: "margin-top:10px" }, p.notes) : null));
-  const used = data.projects.filter(x => x.patternId === p.id);
+  const used = data.projects.filter(x => normProject(x).patternIds.includes(p.id));
   main.append(el("div", { class: "section" }, el("div", { class: "flex" }, el("h3", { style: "flex:1" }, "Projects ", el("span", { class: "cnt" }, used.length)), el("button", { class: "btn small primary", onclick: () => newProjectDlg({ patternId: p.id, name: p.name }) }, "+ Start project")),
     used.length ? el("div", { class: "grid", style: "margin-top:8px" }, used.map(projectCard)) : el("p", { class: "muted small" }, "No projects use this pattern yet.")));
   main.append(attachmentsSection(p));
@@ -671,25 +672,57 @@ async function viewAttachment(a) {
   v.append(bar, body); document.body.append(v);
 }
 /* ========== projects ========== */
+const newCounter = () => ({ row: 0, rowTarget: 0, rep: 0, repTarget: 0, repEnabled: false, history: [] });
 function newProject(init = {}) {
-  return Object.assign({ id: uid(), name: "", status: "active", patternId: "", yarnIds: [], hook: "", started: today(), finished: "", notes: "", attachments: [],
-    counter: { row: 0, rowTarget: 0, rep: 0, repTarget: 0, repEnabled: false, history: [] }, updated: new Date().toISOString() }, init);
+  return normProject(Object.assign({ id: uid(), name: "", status: "active", patternId: "", patternIds: [], counters: {}, yarnIds: [], hook: "", started: today(), finished: "", notes: "", attachments: [],
+    counter: newCounter(), updated: new Date().toISOString() }, init));
+}
+// A project can follow several patterns, each with its own counter. patternId/counter always hold the
+// pattern being worked on right now (what older copies of the app read); the others' counters wait in counters{}.
+function normProject(pr) {
+  if (!Array.isArray(pr.patternIds)) pr.patternIds = [];
+  if (!pr.counters || typeof pr.counters !== "object") pr.counters = {};
+  if (!pr.counter) pr.counter = newCounter();
+  if (pr.patternId && !pr.patternIds.includes(pr.patternId)) pr.patternIds.unshift(pr.patternId);
+  if (!pr.patternId && pr.patternIds.length) { pr.patternId = pr.patternIds[0]; if (pr.counters[pr.patternId]) { pr.counter = pr.counters[pr.patternId]; delete pr.counters[pr.patternId]; } }
+  return pr;
+}
+const projPatterns = pr => normProject(pr).patternIds.map(id => byId(data.patterns, id)).filter(Boolean);
+const counterFor = (pr, id) => id === pr.patternId ? pr.counter : (pr.counters[id] || newCounter());
+function switchPattern(pr, id) {
+  normProject(pr); if (id === pr.patternId || !pr.patternIds.includes(id)) return;
+  if (pr.patternId) pr.counters[pr.patternId] = pr.counter;
+  pr.counter = pr.counters[id] || newCounter(); delete pr.counters[id]; pr.patternId = id; markDirty();
+}
+function linkPattern(pr, id) {
+  normProject(pr); if (pr.patternIds.includes(id)) return;
+  pr.patternIds.push(id);
+  if (!pr.patternId) pr.patternId = id; // the first pattern takes over the project's existing counter
+  const p = byId(data.patterns, id); if (p?.hook && !pr.hook) pr.hook = p.hook;
+  markDirty();
+}
+function unlinkPattern(pr, id) {
+  normProject(pr); if (!pr.patternIds.includes(id)) return;
+  pr.patternIds = pr.patternIds.filter(x => x !== id);
+  if (pr.patternId === id) { const nx = pr.patternIds[0]; pr.patternId = nx || ""; if (nx) { pr.counter = pr.counters[nx] || newCounter(); delete pr.counters[nx]; } }
+  else delete pr.counters[id];
+  markDirty();
 }
 function projectCard(pr) {
-  const pat = byId(data.patterns, pr.patternId);
+  const pat = byId(data.patterns, pr.patternId), pats = projPatterns(pr);
   const c = pr.counter || {};
   const total = c.rowTarget || pat?.rows?.length || 0;
   return el("div", { class: "card click", onclick: () => go("projects", pr.id) },
     el("div", { class: "title" }, pr.name || "Untitled", el("span", { class: "pill " + pr.status }, statusLabel(pr.status))),
-    el("div", { class: "sub" }, pat ? pat.name : "No pattern linked"),
-    el("div", { class: "meta" }, el("span", { class: "pill" }, "Row " + (c.row || 0) + (total ? " / " + total : "")), pr.hook ? el("span", { class: "pill" }, pr.hook) : null,
+    el("div", { class: "sub" }, pats.length ? pats.map(p => p.name).join(" + ") : "No pattern linked"),
+    el("div", { class: "meta" }, el("span", { class: "pill" }, (pats.length > 1 && pat ? pat.name + ": row " : "Row ") + (c.row || 0) + (total ? " / " + total : "")), pr.hook ? el("span", { class: "pill" }, pr.hook) : null,
       pr.yarnIds?.length ? el("span", { class: "pill" }, pr.yarnIds.length + " yarn" + (pr.yarnIds.length > 1 ? "s" : "")) : null),
     total ? el("div", { class: "progress" }, el("i", { style: "width:" + Math.min(100, Math.round((c.row || 0) / total * 100)) + "%" })) : null);
 }
 VIEWS.projects = main => {
   if (route.id) { const pr = byId(data.projects, route.id); if (!pr) return go("projects"); return route.sub === "count" ? counterView(main, pr) : projectDetail(main, pr); }
   const q = (settings.q_projects || "").toLowerCase(); const f = settings.f_projects || "open";
-  let list = data.projects.filter(p => !q || [p.name, byId(data.patterns, p.patternId)?.name, p.notes].join(" ").toLowerCase().includes(q));
+  let list = data.projects.filter(p => !q || [p.name, ...projPatterns(p).map(x => x.name), p.notes].join(" ").toLowerCase().includes(q));
   if (f === "open") list = list.filter(p => p.status === "active" || p.status === "planning" || p.status === "hibernating");
   else if (f !== "all") list = list.filter(p => p.status === f);
   list.sort((a, b) => (b.updated || "").localeCompare(a.updated || ""));
@@ -710,33 +743,44 @@ function newProjectDlg(init = {}) {
     field("Pattern", sel(pr, "patternId", [["", "— none —"], ...data.patterns.map(p => [p.id, p.name])], v => { const p = byId(data.patterns, v); if (p && !pr.hook) { pr.hook = p.hook; hookIn.value = p.hook || ""; } })),
     el("div", { class: "row" }, field("Status", sel(pr, "status", STATUSES)), field("Hook", hookIn)),
     field("Started", inp(pr, "started", { type: "date" })));
-  openModal("New project", body, [{ label: "Cancel" }, "spacer", { label: "Create", cls: "primary", run: () => { flushSave(); if (!pr.name.trim()) pr.name = byId(data.patterns, pr.patternId)?.name || "Untitled project"; data.projects.push(pr); markDirty(); go("projects", pr.id); } }]);
+  openModal("New project", body, [{ label: "Cancel" }, "spacer", { label: "Create", cls: "primary", run: () => { flushSave(); if (!pr.name.trim()) pr.name = byId(data.patterns, pr.patternId)?.name || "Untitled project"; pr.patternIds = []; normProject(pr); data.projects.push(pr); markDirty(); go("projects", pr.id); } }]);
 }
 function editProjectDlg(pr) {
   const body = el("div", null, field("Project name", inp(pr, "name")),
-    field("Pattern", sel(pr, "patternId", [["", "— none —"], ...data.patterns.map(p => [p.id, p.name])])),
     el("div", { class: "row" }, field("Status", sel(pr, "status", STATUSES, v => { if (v === "finished" && !pr.finished) pr.finished = today(); })), field("Hook", inp(pr, "hook", { list: datalist("dl-hooks", HOOK_SIZES) }))),
     el("div", { class: "row" }, field("Started", inp(pr, "started", { type: "date" })), field("Finished", inp(pr, "finished", { type: "date" }))),
     field("Notes", inp(pr, "notes", { type: "textarea", placeholder: "Modifications, gauge, sizing, who it's for…" })));
   openModal("Edit project", body, [{ label: "Cancel" }, "spacer", { label: "Save", cls: "primary", run: () => { flushSave(); pr.updated = new Date().toISOString(); markDirty(); render(); } }]);
 }
 function projectDetail(main, pr) {
-  const pat = byId(data.patterns, pr.patternId); const c = pr.counter;
+  const pat = byId(data.patterns, pr.patternId), pats = projPatterns(pr); const c = pr.counter;
   main.append(el("div", { class: "detail-head" }, el("button", { class: "btn small", onclick: () => go("projects") }, "‹ Projects"), el("h2", null, pr.name),
     el("button", { class: "btn small", onclick: () => editProjectDlg(pr) }, "Edit"),
     el("button", { class: "btn small danger", onclick: async () => { if (await confirmDlg(`Delete project "${pr.name}"?`)) { for (const a of pr.attachments || []) idb.del(a.id).catch(() => {}); removeById(data.projects, pr.id); markDirty(); go("projects"); } } }, "Delete")));
   const total = c.rowTarget || pat?.rows?.length || 0;
   main.append(el("div", { class: "card", style: "display:flex;gap:14px;align-items:center;flex-wrap:wrap" },
-    el("div", { style: "flex:1;min-width:160px" }, el("div", { class: "muted small" }, "Current row"), el("div", { style: "font-size:2.2rem;font-weight:700;line-height:1.1" }, c.row, total ? el("small", { class: "muted", style: "font-size:1rem;font-weight:400" }, " / " + total) : null),
+    el("div", { style: "flex:1;min-width:160px" }, el("div", { class: "muted small" }, "Current row" + (pats.length > 1 && pat ? " · " + pat.name : "")), el("div", { style: "font-size:2.2rem;font-weight:700;line-height:1.1" }, c.row, total ? el("small", { class: "muted", style: "font-size:1rem;font-weight:400" }, " / " + total) : null),
       c.repEnabled ? el("div", { class: "muted small" }, "Repeat " + c.rep + (c.repTarget ? " / " + c.repTarget : "")) : null,
       total ? el("div", { class: "progress", style: "max-width:260px" }, el("i", { style: "width:" + Math.min(100, Math.round(c.row / total * 100)) + "%" })) : null),
     el("button", { class: "btn primary", style: "font-size:1.05rem;padding:12px 20px", onclick: () => go("projects", pr.id, "count") }, "Open counter →")));
   const dl = el("dl", { class: "kv" });
   const kv = (k, v) => { if (v) dl.append(el("dt", null, k), el("dd", null, v)); };
   dl.append(el("dt", null, "Status"), el("dd", null, el("span", { class: "pill " + pr.status }, statusLabel(pr.status))));
-  if (pat) dl.append(el("dt", null, "Pattern"), el("dd", null, el("a", { href: "#", onclick: e => { e.preventDefault(); go("patterns", pat.id); } }, pat.name)));
   kv("Hook", pr.hook); kv("Started", fmtDate(pr.started)); kv("Finished", fmtDate(pr.finished));
   main.append(el("div", { class: "card", style: "margin-top:12px" }, dl, pr.notes ? el("div", { class: "notes", style: "margin-top:10px" }, pr.notes) : null));
+  // patterns, each with its own counter
+  const psec = el("div", { class: "section" }, el("div", { class: "flex" }, el("h3", { style: "flex:1" }, "Patterns ", el("span", { class: "cnt" }, pats.length)), el("button", { class: "btn small", onclick: () => pickPatternDlg(pr) }, "+ Add pattern")));
+  const plist = el("div", { class: "rowlist", style: "margin-top:6px" });
+  for (const p of pats) {
+    const pc = counterFor(pr, p.id), ptotal = pc.rowTarget || p.rows?.length || 0;
+    plist.append(el("div", { class: p.id === pr.patternId && pats.length > 1 ? "cur" : "", style: "align-items:center", onclick: () => { switchPattern(pr, p.id); go("projects", pr.id, "count"); } },
+      el("span", { style: "flex:1;min-width:0" }, el("a", { href: "#", onclick: e => { e.preventDefault(); e.stopPropagation(); go("patterns", p.id); } }, p.name), " ",
+        el("span", { class: "muted small" }, "Row " + (pc.row || 0) + (ptotal ? " / " + ptotal : "") + (p.id === pr.patternId && pats.length > 1 ? " · working on" : ""))),
+      el("button", { class: "btn small", onclick: e => { e.stopPropagation(); switchPattern(pr, p.id); go("projects", pr.id, "count"); } }, "Count"),
+      el("button", { class: "btn small", title: "Remove from project", onclick: async e => { e.stopPropagation(); if (await confirmDlg(`Remove "${p.name}" from this project? Its row count is discarded; the pattern itself stays.`, "Remove")) { unlinkPattern(pr, p.id); render(); } } }, "×")));
+  }
+  if (!pats.length) plist.append(el("div", { class: "muted small" }, "No pattern linked yet. Add one to follow its rows in the counter."));
+  psec.append(plist); main.append(psec);
   // yarns
   pr.yarnIds ||= [];
   const ysec = el("div", { class: "section" }, el("div", { class: "flex" }, el("h3", { style: "flex:1" }, "Yarn ", el("span", { class: "cnt" }, pr.yarnIds.length)), el("button", { class: "btn small", onclick: () => pickYarnDlg(pr) }, "+ Add yarn")));
@@ -745,6 +789,13 @@ function projectDetail(main, pr) {
   if (!pr.yarnIds.length) chips.append(el("span", { class: "muted small" }, "No yarn linked yet."));
   ysec.append(chips); main.append(ysec);
   main.append(attachmentsSection(pr, { title: "Progress photos ", accept: "image/*,.pdf", empty: "Snap progress photos as you go." }));
+}
+function pickPatternDlg(pr) {
+  const q = el("input", { type: "search", placeholder: "Search your patterns…" });
+  const list = el("div", { class: "rowlist", style: "margin-top:8px" });
+  const draw = () => { const s = q.value.toLowerCase(); setKids(list, ...data.patterns.filter(p => !pr.patternIds.includes(p.id) && (!s || [p.name, p.designer].join(" ").toLowerCase().includes(s))).map(p => el("div", { onclick: () => { linkPattern(pr, p.id); pr.updated = new Date().toISOString(); m.close(); render(); } }, el("span", null, p.name || "Untitled", " ", el("span", { class: "muted small" }, [p.designer, p.rows?.length ? p.rows.length + " rows" : ""].filter(Boolean).join(" · ")))))); if (!list.children.length) list.append(el("div", { class: "muted" }, data.patterns.length ? "No more patterns to add." : "No patterns yet — add one in the Patterns tab.")); };
+  q.addEventListener("input", draw); draw();
+  const m = openModal("Add pattern to project", el("div", null, q, list), [{ label: "Close" }]);
 }
 function pickYarnDlg(pr) {
   const q = el("input", { type: "search", placeholder: "Search your stash…" });
@@ -773,6 +824,7 @@ function counterView(main, pr) {
   const side = el("div");
   function paint() {
     const cur = c.row > 0 ? rows[c.row - 1] : null, next = rows[c.row];
+    const opt = patSwitch?.selectedOptions[0]; if (opt && pat) opt.textContent = pat.name + " · row " + c.row;
     setKids(rowCard, el("div", { class: "lbl" }, rows.some((r, i) => i > 0 && r.n <= rows[i - 1].n) ? "Step" : "Row"), el("div", { class: "num" }, c.row, total ? el("small", null, " / " + total) : null),
       total ? el("div", { class: "progress" }, el("i", { style: "width:" + Math.min(100, Math.round(c.row / total * 100)) + "%" })) : null,
       el("div", { class: "bigbtns" }, el("button", { onclick: dec, "aria-label": "minus one row" }, "−"), el("button", { class: "plus", onclick: inc, "aria-label": "plus one row" }, "+")),
@@ -797,7 +849,10 @@ function counterView(main, pr) {
       setTimeout(() => { const cur = rl.querySelector(".cur"); if (cur) rl.scrollTop = Math.max(0, cur.offsetTop - rl.clientHeight / 2 + cur.offsetHeight / 2); }, 0);
     }
   }
-  main.append(el("div", { class: "detail-head" }, el("button", { class: "btn small", onclick: () => { wake?.release?.(); go("projects", pr.id); } }, "‹ " + pr.name), el("h2", null, ""), pat ? el("span", { class: "muted small" }, pat.name) : null));
+  const pats = projPatterns(pr);
+  const patSwitch = pats.length > 1 ? (() => { const s = el("select", { style: "width:auto;max-width:55vw", "aria-label": "Pattern to count", onchange: e => { flushSave(); switchPattern(pr, e.target.value); go("projects", pr.id, "count"); } },
+    pats.map(p => { const pc = counterFor(pr, p.id); return el("option", { value: p.id, selected: p.id === pr.patternId }, p.name + " · row " + (pc.row || 0)); })); return s; })() : null;
+  main.append(el("div", { class: "detail-head" }, el("button", { class: "btn small", onclick: () => { wake?.release?.(); go("projects", pr.id); } }, "‹ " + pr.name), el("h2", null, ""), patSwitch || (pat ? el("span", { class: "muted small" }, pat.name) : null)));
   main.append(el("div", { class: "counter" }, rowCard, side));
   main.append(el("p", { class: "muted small", style: "margin-top:12px" }, "Tip: on a phone, add this page to your Home Screen for a full-screen counter. Space/→ = +1 row, ← = −1, Z = undo."));
   paint();
@@ -1075,7 +1130,7 @@ async function importData(file) {
     if (mode.v === "replace") { if (!await confirmDlg("Replace all local data with the backup?", "Replace")) return false; await idb.clear().catch(() => {}); data = Object.assign(blankData(), { projects: inc.projects || [], patterns: inc.patterns || [], yarns: inc.yarns || [], supplies: inc.supplies || [] }); }
     else for (const k of ["projects", "patterns", "yarns", "supplies"]) for (const it of inc[k] || []) { const i = data[k].findIndex(x => x.id === it.id); if (i >= 0) { if ((it.updated || "") >= (data[k][i].updated || "")) data[k][i] = it; } else data[k].push(it); }
     let nf = 0; for (const f of inc.files || []) { try { if (!(await idb.get(f.id))) { await idb.put({ id: f.id, name: f.name, type: f.type, size: f.size, added: f.added, blob: b64ToBlob(f.b64, f.type) }); nf++; } } catch {} }
-    lastSerialized = null; markDirty(); flushSave(); go("projects"); toast(`Imported (${nf} files added)`);
+    data.projects.forEach(normProject); lastSerialized = null; markDirty(); flushSave(); go("projects"); toast(`Imported (${nf} files added)`);
   } }]);
 }
 
@@ -1180,6 +1235,7 @@ function adopt(d) {
   data = Object.assign(blankData(), d);
   for (const k of ["projects", "patterns", "yarns", "supplies"]) if (!Array.isArray(data[k])) data[k] = [];
   data.sync = Object.assign({ rev: 0, modified: "", device: "" }, data.sync || {});
+  data.projects.forEach(normProject);
   try { localStorage.setItem(DATA_KEY, JSON.stringify(data)); } catch {}
   lastSerialized = JSON.stringify({ ...data, sync: undefined });
   syncCfg.baseRev = data.sync.rev || 0; syncCfg.lastSync = new Date().toISOString(); saveSyncCfg();

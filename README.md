@@ -6,7 +6,7 @@ Everything runs in the browser — no accounts, no server, no tracking. Your dat
 
 ## Features
 
-- **Projects** — status (planning / in progress / hibernating / finished / frogged), linked pattern, hook, yarn used, notes, progress photos.
+- **Projects** — status (planning / in progress / hibernating / finished / frogged), one or more linked patterns (each keeps its own row count; switch between them in the counter), hook, yarn used, notes, progress photos.
 - **Row counter** — big tap targets, optional second counter for pattern repeats or stitches (with a target that auto-advances the row), undo history, jump to any row, keyboard shortcuts (Space/→ +1, ← −1, Z undo). Keeps the screen awake while counting.
 - **Patterns** — import PDFs, photos, `.txt`/`.md` files, paste written instructions, or save a link (Ravelry, Etsy, blogs). **PDF text is extracted automatically** on import (or later via "Extract rows" on the pattern page) and parsed into rows (`Row 1:`, `Rnd 2:`, `Rows 3-6:` …) so the counter shows the current and next step. Multi-part patterns whose numbering restarts (e.g. amigurumi body, then wings) are stepped through in order. Scanned-image PDFs have no text to extract. The PDF reader (pdf.js) loads from cdnjs the first time it's needed.
 - **Yarn stash** — brand, line, colorway, weight, fiber, yardage, quantity, label photo. **Scan the UPC barcode** with the camera (Safari 17+ / Chrome); known yarns are matched from your own stash first, then Open Products Facts / Open Food Facts (free, no key), then UPCitemdb through the proxy below.
