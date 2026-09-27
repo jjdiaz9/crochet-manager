@@ -642,11 +642,14 @@ function editPatternDlg(p) {
 function attachmentsSection(owner, opts = {}) {
   owner.attachments ||= [];
   const wrap = el("div", { class: "att" });
-  const fileIn = el("input", { type: "file", multiple: true, accept: opts.accept || ".pdf,image/*", style: "display:none", onchange: async e => {
-    for (const f of e.target.files) { try { owner.attachments.push(await storeFile(f)); } catch { toast("Could not store " + f.name); } }
-    markDirty(); render();
-  } });
-  const camIn = el("input", { type: "file", accept: "image/*", capture: "environment", style: "display:none", onchange: fileIn.onchange });
+  // shared by both inputs (el() uses addEventListener, so there is no .onchange property to copy)
+  const addFiles = async e => {
+    const files = [...e.target.files]; e.target.value = ""; // cleared so picking the same file again still fires
+    let n = 0; for (const f of files) { try { owner.attachments.push(await storeFile(f)); n++; } catch { toast("Could not store " + f.name); } }
+    if (n) { owner.updated = new Date().toISOString(); markDirty(); render(); toast(n + (n > 1 ? " files" : " file") + " added"); }
+  };
+  const fileIn = el("input", { type: "file", multiple: true, accept: opts.accept || ".pdf,image/*", style: "display:none", onchange: addFiles });
+  const camIn = el("input", { type: "file", accept: "image/*", capture: "environment", style: "display:none", onchange: addFiles });
   const sec = el("div", { class: "section" }, el("div", { class: "flex" }, el("h3", { style: "flex:1" }, opts.title || "Files & photos ", el("span", { class: "cnt" }, owner.attachments.length)),
     el("button", { class: "btn small", onclick: () => camIn.click() }, "📷 Photo"), el("button", { class: "btn small", onclick: () => fileIn.click() }, "+ Add file")), fileIn, camIn, wrap);
   if (!owner.attachments.length) wrap.append(el("span", { class: "muted small" }, opts.empty || "Attach PDFs or photos."));
