@@ -327,7 +327,8 @@ function render() {
 // make a magic ring."); prose after a row is kept with that row ("Fasten off.");
 // prose in a section with no rows at all (materials, gauge, assembly) becomes a
 // pattern note. Notes are never counter steps.
-const ROW_RE = /^\s*(?:\*\*|__)?\s*(rows?|rnds?|rounds?|r)\s*\.?\s*(\d+)\s*(?:\s*(?:-|\u2013|\u2014|to|through|thru)\s*(\d+))?\s*[:.)\-\u2013\u2014]?\s*(?:\*\*|__)?\s*[:.)\-\u2013\u2014]?\s*(.*)$/i;
+// The range end may repeat the prefix: "R8-R13", "Rnd 8 \u2013 Rnd 13", "Rows 8 to Row 13".
+const ROW_RE = /^\s*(?:\*\*|__)?\s*(rows?|rnds?|rounds?|r)\s*\.?\s*(\d+)\s*(?:\s*(?:-|\u2013|\u2014|to|through|thru)\s*(?:(?:rows?|rnds?|rounds?|r)\s*\.?\s*)?(\d+))?\s*[:.)\-\u2013\u2014]?\s*(?:\*\*|__)?\s*[:.)\-\u2013\u2014]?\s*(.*)$/i;
 const cleanLine = l => l.replace(/^\s*(?:\*\*|__|##+|\u2022|-)\s*/, "").replace(/\s*(?:\*\*|__)\s*$/, "").trim();
 function isHeading(line) {
   const t = line.replace(/[:.]\s*$/, "").trim();
@@ -335,6 +336,8 @@ function isHeading(line) {
   if (/^(layer|part|side|step|piece|half)\s+[0-9ivx]+$/i.test(t)) return true;
   return !/[a-z]/.test(t) && /[A-Z]{2,}/.test(t);
 }
+// Bump when parsing changes so saved patterns are re-read on load (counters are remapped).
+const ROW_PARSER = 3;
 function parsePattern(text) {
   const rows = [], notes = [];
   let section = "", pending = [], sectionHasRow = false;
@@ -350,7 +353,7 @@ function parsePattern(text) {
       if (b < a || b - a > 500) continue;
       const lead = pending.join(" "); pending = [];
       for (let n = a; n <= b; n++) {
-        rows.push({ v: 2, n, kind, section, text: body || "(same as above)", lead: n === a ? lead : "", note: n === a ? lead : "", after: "", range: b > a ? `${a}\u2013${b}` : "" });
+        rows.push({ v: ROW_PARSER, n, kind, section, text: body || "(same as above)", lead: n === a ? lead : "", note: n === a ? lead : "", after: "", range: b > a ? `${a}\u2013${b}` : "" });
       }
       sectionHasRow = true;
     } else if (isHeading(line)) {
@@ -365,7 +368,40 @@ function parsePattern(text) {
 }
 function parsePatternRows(text) { return parsePattern(text).rows; }
 // Re-parse a pattern's text into rows + notes (used everywhere text changes).
-function reparsePattern(p) { const r = parsePattern(p.text); p.rows = r.rows; p.rowNotes = r.notes; applyPatternMeta(p); return p.rows; }
+function reparsePattern(p) { const old = p.rows || []; const r = parsePattern(p.text); p.rows = r.rows; p.rowNotes = r.notes; applyPatternMeta(p); remapCounters(p, old, p.rows); return p.rows; }
+// Counters store positions in pattern.rows. When the rows change, move every counter on this
+// pattern (and its undo history) to the same row — matched by section + row number — in the new list.
+// A step that used to be one line but is now a range ("R8-R13" read as one step) maps to the range's end.
+function rowKeys(rows) { const seen = {}; return rows.map(r => { const k = (r.section || "") + "\u0001" + r.n; seen[k] = (seen[k] || 0) + 1; return k + "\u0001" + seen[k]; }); }
+function rowPosMap(oldRows, newRows) {
+  const oldK = rowKeys(oldRows), at = new Map(rowKeys(newRows).map((k, i) => [k, i]));
+  return pos => {
+    if (!(pos > 0)) return pos;
+    if (pos >= oldRows.length) return pos - oldRows.length + newRows.length;
+    for (let i = pos - 1; i >= 0; i--) {
+      let j = at.get(oldK[i]); if (j === undefined) continue;
+      if (newRows[j].range && !oldRows[i].range) while (j + 1 < newRows.length && newRows[j + 1].range === newRows[j].range && newRows[j + 1].section === newRows[j].section && newRows[j + 1].n === newRows[j].n + 1) j++;
+      return j + 1;
+    }
+    return Math.min(pos, newRows.length);
+  };
+}
+function remapCounters(p, oldRows, newRows) {
+  if (!oldRows.length || !Array.isArray(data?.projects)) return;
+  const map = rowPosMap(oldRows, newRows);
+  for (const pr of data.projects) {
+    const cs = [pr.patternId === p.id ? pr.counter : null, pr.counters?.[p.id]].filter(Boolean);
+    for (const c of cs) { c.row = map(c.row); for (const h of c.history || []) h.row = map(h.row); }
+  }
+}
+// Re-read saved patterns whose rows came from an older parser.
+function migratePatterns() { data.projects.forEach(normProject); let n = 0; for (const p of data.patterns) if (p.text && (p.rows?.[0]?.v || 0) < ROW_PARSER) { reparsePattern(p); n++; } return n; }
+// "Rnds 8–13 · 2 of 6" for a round that belongs to a range, else "Rnd 9".
+function rowLabelLong(r) {
+  if (!r?.range) return rowLabel(r);
+  const [a, b] = r.range.split("–").map(Number);
+  return `${r.kind}s ${r.range} · ${r.n - a + 1} of ${b - a + 1}`;
+}
 const short = (t, n = 90) => !t ? "" : t.length > n ? t.slice(0, n - 1).trimEnd() + "\u2026" : t;
 // One scrollable list of rows, grouped under their section headings.
 function rowListEl(rows, opts = {}) {
@@ -831,9 +867,9 @@ function counterView(main, pr) {
     setKids(rowCard, el("div", { class: "lbl" }, rows.some((r, i) => i > 0 && r.n <= rows[i - 1].n) ? "Step" : "Row"), el("div", { class: "num" }, c.row, total ? el("small", null, " / " + total) : null),
       total ? el("div", { class: "progress" }, el("i", { style: "width:" + Math.min(100, Math.round(c.row / total * 100)) + "%" })) : null,
       el("div", { class: "bigbtns" }, el("button", { onclick: dec, "aria-label": "minus one row" }, "−"), el("button", { class: "plus", onclick: inc, "aria-label": "plus one row" }, "+")),
-      cur ? el("div", { class: "instr" }, el("div", { class: "n" }, "Just finished · " + [cur.section, rowLabel(cur)].filter(Boolean).join(" · ")), cur.text,
+      cur ? el("div", { class: "instr" }, el("div", { class: "n" }, "Just finished · " + [cur.section, rowLabelLong(cur)].filter(Boolean).join(" · ")), cur.text,
         cur.after ? el("div", { class: "muted small", style: "margin-top:6px" }, cur.after) : null) : null,
-      next ? el("div", { class: "instr next" }, el("div", { class: "n" }, "Next · " + [next.section, rowLabel(next)].filter(Boolean).join(" · ")),
+      next ? el("div", { class: "instr next" }, el("div", { class: "n" }, "Next · " + [next.section, rowLabelLong(next)].filter(Boolean).join(" · ")),
         next.lead ? el("div", { class: "muted small" }, next.lead) : null, next.text) : null,
       el("div", { class: "mini" }, el("button", { class: "btn small", onclick: undo }, "↶ Undo"),
         pat && patternNoteBlocks(pat).length ? el("button", { class: "btn small", onclick: () => openModal("Pattern notes", notesEl(pat), [{ label: "Close" }]) }, "Notes") : null,
@@ -1133,7 +1169,7 @@ async function importData(file) {
     if (mode.v === "replace") { if (!await confirmDlg("Replace all local data with the backup?", "Replace")) return false; await idb.clear().catch(() => {}); data = Object.assign(blankData(), { projects: inc.projects || [], patterns: inc.patterns || [], yarns: inc.yarns || [], supplies: inc.supplies || [] }); }
     else for (const k of ["projects", "patterns", "yarns", "supplies"]) for (const it of inc[k] || []) { const i = data[k].findIndex(x => x.id === it.id); if (i >= 0) { if ((it.updated || "") >= (data[k][i].updated || "")) data[k][i] = it; } else data[k].push(it); }
     let nf = 0; for (const f of inc.files || []) { try { if (!(await idb.get(f.id))) { await idb.put({ id: f.id, name: f.name, type: f.type, size: f.size, added: f.added, blob: b64ToBlob(f.b64, f.type) }); nf++; } } catch {} }
-    data.projects.forEach(normProject); lastSerialized = null; markDirty(); flushSave(); go("projects"); toast(`Imported (${nf} files added)`);
+    data.projects.forEach(normProject); migratePatterns(); lastSerialized = null; markDirty(); flushSave(); go("projects"); toast(`Imported (${nf} files added)`);
   } }]);
 }
 
@@ -1239,6 +1275,7 @@ function adopt(d) {
   for (const k of ["projects", "patterns", "yarns", "supplies"]) if (!Array.isArray(data[k])) data[k] = [];
   data.sync = Object.assign({ rev: 0, modified: "", device: "" }, data.sync || {});
   data.projects.forEach(normProject);
+  migratePatterns();
   try { localStorage.setItem(DATA_KEY, JSON.stringify(data)); } catch {}
   lastSerialized = JSON.stringify({ ...data, sync: undefined });
   syncCfg.baseRev = data.sync.rev || 0; syncCfg.lastSync = new Date().toISOString(); saveSyncCfg();
@@ -1342,7 +1379,7 @@ function syncCard() {
 /* ========== boot ========== */
 loadData();
 if (settings.upcProxy && !settings.proxy) { settings.proxy = settings.upcProxy.replace(/\/+$/, ""); delete settings.upcProxy; saveSettings(); }
-for (const p of data.patterns) if (p.text && !p.rows?.[0]?.v) reparsePattern(p);
+migratePatterns();
 try { lastSerialized = JSON.stringify({ ...data, sync: undefined }); } catch {}
 (() => { const h = location.hash.replace(/^#/, "").split("/"); if (h[0] && VIEWS[h[0]]) route = { tab: h[0], id: h[1] || null, sub: h[2] || null }; })();
 render();
